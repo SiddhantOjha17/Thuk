@@ -4,7 +4,7 @@ import typing as T
 import asyncio
 from dotenv import load_dotenv
 
-load_dotenv(r"D:\PersonalProjects\ExpeBot\.env")
+load_dotenv()
 
 
 async def run_agent(input_text):

@@ -48,6 +48,7 @@ def get_text_from_audio(fp: Path):
 
 # TODO: Not sure to make this a filepath or wtv content wtv
 # Filepath could be better for logging and testing and stuff,
+# Video kyun ?????
 def get_text_for_thing(fp: Path):
     ft = mimetypes.guess_type(fp)
     if "image" in ft or "video" in ft:
