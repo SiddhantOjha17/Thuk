@@ -1,12 +1,19 @@
 # Render deployment configuration
 # https://render.com/docs/blueprint-spec
 
+databases:
+  - name: thuk-db
+    plan: starter
+    region: singapore
+    databaseName: thuk
+    user: thuk
+
 services:
   # Web Service
   - type: web
     name: thuk
     runtime: docker
-    region: singapore  # Closer to India
+    region: singapore
     plan: starter
     healthCheckPath: /health
     envVars:
@@ -27,11 +34,3 @@ services:
           type: web
           name: thuk
           property: host
-
-  # PostgreSQL Database
-  - type: postgres
-    name: thuk-db
-    region: singapore
-    plan: starter
-    databaseName: thuk
-    user: thuk
