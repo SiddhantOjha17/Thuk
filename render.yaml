@@ -3,7 +3,7 @@
 
 databases:
   - name: thuk-db
-    plan: starter
+    plan: free
     region: singapore
     databaseName: thuk
     user: thuk
@@ -14,7 +14,7 @@ services:
     name: thuk
     runtime: docker
     region: singapore
-    plan: starter
+    plan: free
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
