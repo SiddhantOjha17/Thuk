@@ -14,7 +14,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Database
+    # Database (Render provides postgresql://, we need to convert to asyncpg)
     database_url: str = "postgresql+asyncpg://user:password@localhost:5432/thuk"
 
     # Twilio WhatsApp
@@ -34,9 +34,31 @@ class Settings(BaseSettings):
     webhook_base_url: str = ""
 
     @property
+    def async_database_url(self) -> str:
+        """Get async database URL for SQLAlchemy async engine.
+        
+        Render provides postgresql://, but we need postgresql+asyncpg://
+        """
+        url = self.database_url
+        # Handle various PostgreSQL URL formats
+        if url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        elif url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+        return url
+
+    @property
     def sync_database_url(self) -> str:
         """Get synchronous database URL for Alembic migrations."""
-        return self.database_url.replace("postgresql+asyncpg", "postgresql+psycopg2")
+        url = self.database_url
+        # Handle various PostgreSQL URL formats
+        if url.startswith("postgresql+asyncpg://"):
+            url = url.replace("postgresql+asyncpg://", "postgresql+psycopg2://", 1)
+        elif url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+        elif url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql+psycopg2://", 1)
+        return url
 
 
 @lru_cache
