@@ -92,11 +92,21 @@ async def handle_image_message(
     message: WhatsAppMessage, user, db: AsyncSession
 ) -> str:
     """Handle an image message (bank transaction screenshot)."""
+    from app.config import get_settings
+    
+    settings = get_settings()
+    
     try:
-        # Download the image
-        async with httpx.AsyncClient() as client:
+        # Download the image with Twilio auth (required for media URLs)
+        auth = (settings.twilio_account_sid, settings.twilio_auth_token)
+        async with httpx.AsyncClient(auth=auth) as client:
             response = await client.get(message.media_url)
+            if response.status_code != 200:
+                return f"Failed to download image (status {response.status_code}). Please try again."
             image_data = response.content
+
+        if not image_data or len(image_data) < 100:
+            return "Image appears to be empty. Please try sending again."
 
         # Process with vision API
         processor = ImageProcessor(user)
@@ -115,6 +125,7 @@ async def handle_image_message(
             source_type="image",
         )
     except Exception as e:
+        print(f"Error processing image: {e}")
         return f"Error processing image: {str(e)}"
 
 
@@ -122,10 +133,17 @@ async def handle_voice_message(
     message: WhatsAppMessage, user, db: AsyncSession
 ) -> str:
     """Handle a voice message."""
+    from app.config import get_settings
+    
+    settings = get_settings()
+    
     try:
-        # Download the audio
-        async with httpx.AsyncClient() as client:
+        # Download the audio with Twilio auth
+        auth = (settings.twilio_account_sid, settings.twilio_auth_token)
+        async with httpx.AsyncClient(auth=auth) as client:
             response = await client.get(message.media_url)
+            if response.status_code != 200:
+                return f"Failed to download voice message (status {response.status_code})."
             audio_data = response.content
 
         # Transcribe with Whisper
@@ -145,6 +163,7 @@ async def handle_voice_message(
             source_type="voice",
         )
     except Exception as e:
+        print(f"Error processing voice: {e}")
         return f"Error processing voice message: {str(e)}"
 
 
