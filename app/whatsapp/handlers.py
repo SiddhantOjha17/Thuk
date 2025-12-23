@@ -99,7 +99,7 @@ async def handle_image_message(
     try:
         # Download the image with Twilio auth (required for media URLs)
         auth = (settings.twilio_account_sid, settings.twilio_auth_token)
-        async with httpx.AsyncClient(auth=auth) as client:
+        async with httpx.AsyncClient(auth=auth, follow_redirects=True) as client:
             response = await client.get(message.media_url)
             if response.status_code != 200:
                 return f"Failed to download image (status {response.status_code}). Please try again."
@@ -140,7 +140,7 @@ async def handle_voice_message(
     try:
         # Download the audio with Twilio auth
         auth = (settings.twilio_account_sid, settings.twilio_auth_token)
-        async with httpx.AsyncClient(auth=auth) as client:
+        async with httpx.AsyncClient(auth=auth, follow_redirects=True) as client:
             response = await client.get(message.media_url)
             if response.status_code != 200:
                 return f"Failed to download voice message (status {response.status_code})."
