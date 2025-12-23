@@ -70,14 +70,48 @@ class TextParser:
         r"delete|remove|cancel|undo",
     ]
 
-    # Category keywords
+    # Category keywords - expanded for better detection
     CATEGORY_KEYWORDS = {
-        "food": ["food", "lunch", "dinner", "breakfast", "snack", "meal", "eat", "restaurant", "cafe", "coffee", "tea", "swiggy", "zomato"],
-        "transport": ["uber", "ola", "cab", "taxi", "auto", "bus", "metro", "train", "fuel", "petrol", "diesel", "transport", "travel", "flight"],
-        "shopping": ["shopping", "amazon", "flipkart", "clothes", "shoes", "electronics", "buy", "purchase"],
-        "bills": ["bill", "electricity", "water", "gas", "internet", "wifi", "phone", "recharge", "rent", "emi"],
-        "entertainment": ["movie", "netflix", "spotify", "game", "concert", "show", "subscription"],
-        "health": ["medicine", "doctor", "hospital", "pharmacy", "medical", "health", "gym", "fitness"],
+        "food": [
+            # General food terms
+            "food", "lunch", "dinner", "breakfast", "snack", "meal", "eat", "eating",
+            # Restaurant/delivery
+            "restaurant", "cafe", "coffee", "tea", "swiggy", "zomato", "ubereats", "doordash",
+            # Specific foods (common)
+            "sandwich", "burger", "pizza", "pasta", "noodles", "rice", "curry", "biryani",
+            "dosa", "idli", "samosa", "paratha", "roti", "dal", "thali", "momos",
+            "chicken", "mutton", "fish", "paneer", "salad", "soup", "bread",
+            # Drinks
+            "chai", "lassi", "juice", "smoothie", "milkshake", "beer", "wine", "drinks",
+            # Desserts
+            "ice cream", "icecream", "cake", "dessert", "sweet", "mithai", "gulab jamun",
+            # Fast food chains
+            "mcdonalds", "kfc", "dominos", "subway", "starbucks", "ccd", "mcd",
+        ],
+        "transport": [
+            "uber", "ola", "cab", "taxi", "auto", "rickshaw", "bus", "metro", "train",
+            "fuel", "petrol", "diesel", "gas", "transport", "travel", "flight", "ticket",
+            "rapido", "bike", "scooter", "parking", "toll", "lyft",
+        ],
+        "shopping": [
+            "shopping", "amazon", "flipkart", "myntra", "clothes", "shoes", "electronics",
+            "buy", "purchase", "mall", "store", "market", "bazaar", "grocery", "groceries",
+            "bigbasket", "blinkit", "zepto", "instamart", "dmart",
+        ],
+        "bills": [
+            "bill", "electricity", "water", "gas", "internet", "wifi", "phone", "recharge",
+            "rent", "emi", "loan", "insurance", "tax", "maintenance", "society",
+        ],
+        "entertainment": [
+            "movie", "netflix", "spotify", "amazon prime", "hotstar", "game", "gaming",
+            "concert", "show", "subscription", "youtube", "premium", "theatre", "cinema",
+            "pvr", "inox", "bookmyshow",
+        ],
+        "health": [
+            "medicine", "doctor", "hospital", "pharmacy", "medical", "health", "gym",
+            "fitness", "yoga", "clinic", "lab", "test", "checkup", "apollo", "1mg",
+            "pharmeasy", "netmeds",
+        ],
     }
 
     # Time patterns

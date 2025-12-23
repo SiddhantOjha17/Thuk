@@ -3,16 +3,76 @@
 from datetime import date
 from decimal import Decimal
 
+from langchain_openai import ChatOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import crud
 from app.database.models import SourceType
 from app.processors.text_parser import ParsedMessage
 from app.utils.currency import format_amount
+from app.utils.encryption import decrypt_api_key
 
 
 class ExpenseAgent:
     """Agent for managing expenses."""
+
+    async def _detect_category_with_llm(
+        self,
+        user,
+        description: str,
+        available_categories: list[str],
+    ) -> str | None:
+        """Use LLM to detect the best category for an expense description.
+
+        Args:
+            user: User model instance (for API key)
+            description: The expense description (e.g., "sandwich", "uber to office")
+            available_categories: List of available category names
+
+        Returns:
+            Best matching category name, or None if unsure
+        """
+        if not description or not available_categories:
+            return None
+
+        try:
+            api_key = decrypt_api_key(user.openai_api_key_encrypted)
+            llm = ChatOpenAI(
+                api_key=api_key,
+                model="gpt-4o-mini",
+                temperature=0,
+            )
+
+            categories_str = ", ".join(available_categories)
+            prompt = f"""Categorize this expense into one of these categories: {categories_str}
+
+Expense description: "{description}"
+
+Rules:
+- Reply with ONLY the category name, nothing else
+- If the expense clearly fits a category, return that category
+- If unsure or it could fit multiple, return "Other"
+- Common examples:
+  - "sandwich", "pizza", "dinner" -> Food
+  - "uber", "metro", "parking" -> Transport
+  - "netflix", "movie" -> Entertainment
+  - "amazon", "clothes" -> Shopping
+
+Your answer (just the category name):"""
+
+            response = await llm.ainvoke(prompt)
+            detected = response.content.strip()
+
+            # Validate it's one of the available categories
+            for cat in available_categories:
+                if cat.lower() == detected.lower():
+                    return cat
+
+            return None
+
+        except Exception as e:
+            print(f"LLM category detection failed: {e}")
+            return None
 
     async def add_expense(
         self,
@@ -37,8 +97,28 @@ class ExpenseAgent:
 
         # Try to find matching category
         category = None
+        category_source = None
+
+        # 1. First try keyword-based category hint
         if parsed.category_hint:
             category = await crud.get_category_by_name(db, user.id, parsed.category_hint)
+            if category:
+                category_source = "keyword"
+
+        # 2. If no category found, use LLM to detect
+        if category is None and parsed.description:
+            # Get available categories for this user
+            user_categories = await crud.get_user_categories(db, user.id)
+            category_names = [c.name for c in user_categories]
+
+            detected_category_name = await self._detect_category_with_llm(
+                user, parsed.description, category_names
+            )
+
+            if detected_category_name:
+                category = await crud.get_category_by_name(db, user.id, detected_category_name)
+                if category:
+                    category_source = "llm"
 
         # Create the expense
         expense = await crud.create_expense(
