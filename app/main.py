@@ -4,13 +4,21 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Form, Request
 from fastapi.responses import PlainTextResponse
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.database.base import get_db
 from app.database.schemas import WhatsAppMessage
+from app.memory.redis_store import store
+from app.middleware.twilio_auth import verify_twilio_signature
+from app.middleware.rate_limit import check_rate_limit
+from app.utils.logging import setup_logging, get_logger
 from app.whatsapp.client import get_whatsapp_client
 from app.whatsapp.handlers import handle_incoming_message, parse_twilio_request
+
+settings = get_settings()
+logger = get_logger(__name__)
 
 
 settings = get_settings()
@@ -20,10 +28,11 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
-    print("Thuk is starting up...")
+    setup_logging(debug=settings.debug)
+    logger.info("Thuk is starting up...")
     yield
     # Shutdown
-    print("Thuk is shutting down...")
+    logger.info("Thuk is shutting down...")
 
 
 app = FastAPI(
@@ -45,12 +54,19 @@ async def root():
 
 
 @app.get("/health")
-async def health_check():
+async def health_check(db: AsyncSession = Depends(get_db)):
     """Health check for deployment platforms."""
-    return {"status": "ok"}
+    try:
+        # Test DB connection
+        await db.execute(text("SELECT 1"))
+        return {"status": "ok", "db": "ok"}
+    except Exception as e:
+        logger.error("Health check failed", error=str(e))
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail={"status": "error", "db": "failed"})
 
 
-@app.post("/webhook/whatsapp")
+@app.post("/webhook/whatsapp", dependencies=[Depends(verify_twilio_signature), Depends(check_rate_limit)])
 async def whatsapp_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db),
@@ -77,7 +93,7 @@ async def whatsapp_webhook(
             body=response_text,
         )
     except Exception as e:
-        print(f"Error sending WhatsApp message: {e}")
+        logger.error("Error sending WhatsApp message", error=str(e), to=message.from_number)
 
     # Return TwiML response (empty is fine for async)
     return PlainTextResponse(
@@ -90,6 +106,23 @@ async def whatsapp_webhook(
 async def whatsapp_webhook_verify(request: Request):
     """Handle Twilio webhook verification (if needed)."""
     return PlainTextResponse(content="OK")
+
+
+@app.get("/export/{export_id}/expenses.csv")
+async def download_export(export_id: str):
+    """Download an exported CSV file."""
+    redis = await store.get_client()
+    key = f"thuk:export:{export_id}"
+    csv_content = await redis.get(key)
+    
+    if not csv_content:
+        return PlainTextResponse("Export not found or expired.", status_code=404)
+        
+    return PlainTextResponse(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=expenses.csv"}
+    )
 
 
 # Development endpoint for testing without WhatsApp

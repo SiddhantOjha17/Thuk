@@ -36,9 +36,14 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "httpx>=0.28.1",
     "cryptography>=44.0.0",
+    "structlog>=24.1.0",
+    "tenacity>=8.4.1",
     
     # Audio processing
     "pydub>=0.25.1",
+    
+    # Memory & Rate Limiting
+    "redis>=5.0.0",
 ]
 
 [project.optional-dependencies]

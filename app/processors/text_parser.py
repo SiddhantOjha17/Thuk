@@ -20,6 +20,10 @@ class Intent(str, Enum):
     ADD_CATEGORY = "add_category"
     LIST_CATEGORIES = "list_categories"
     DELETE_EXPENSE = "delete_expense"
+    EDIT_EXPENSE = "edit_expense"
+    SET_BUDGET = "set_budget"
+    CHECK_BUDGET = "check_budget"
+    EXPORT_EXPENSES = "export_expenses"
     HELP = "help"
     UNKNOWN = "unknown"
 
@@ -68,6 +72,18 @@ class TextParser:
     ]
     DELETE_PATTERNS = [
         r"delete|remove|cancel|undo",
+    ]
+    EDIT_PATTERNS = [
+        r"edit|change|update|amend",
+    ]
+    BUDGET_SET_PATTERNS = [
+        r"set budget|update budget|my budget is",
+    ]
+    BUDGET_CHECK_PATTERNS = [
+        r"check budget|my budget$|budget status|how much budget",
+    ]
+    EXPORT_PATTERNS = [
+        r"export|download|csv|send me my expenses",
     ]
 
     # Category keywords - expanded for better detection
@@ -175,6 +191,18 @@ class TextParser:
         # Order matters - more specific patterns first
         if any(re.search(p, text) for p in self.DELETE_PATTERNS):
             return Intent.DELETE_EXPENSE
+            
+        if any(re.search(p, text) for p in self.EXPORT_PATTERNS):
+            return Intent.EXPORT_EXPENSES
+            
+        if any(re.search(p, text) for p in self.BUDGET_SET_PATTERNS):
+            return Intent.SET_BUDGET
+            
+        if any(re.search(p, text) for p in self.BUDGET_CHECK_PATTERNS):
+            return Intent.CHECK_BUDGET
+            
+        if any(re.search(p, text) for p in self.EDIT_PATTERNS):
+            return Intent.EDIT_EXPENSE
 
         if any(re.search(p, text) for p in self.DEBT_SETTLE_PATTERNS):
             return Intent.SETTLE_DEBT

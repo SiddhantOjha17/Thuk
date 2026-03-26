@@ -7,6 +7,9 @@ from app.database import crud
 from app.database.schemas import WhatsAppMessage
 from app.processors import ImageProcessor, VoiceProcessor
 from app.utils.encryption import encrypt_api_key
+from app.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 async def parse_twilio_request(form_data: dict) -> WhatsAppMessage:
@@ -71,6 +74,9 @@ async def handle_incoming_message(
 
 async def process_user_message(message: WhatsAppMessage, user, db: AsyncSession) -> str:
     """Process a message from a fully set up user."""
+    # Check for empty body with no media
+    if message.num_media == 0 and not message.body:
+        return "I didn't receive any text or media. Type 'help' to see what I can do!"
     # Check for media (image or voice)
     if message.num_media > 0 and message.media_url:
         content_type = message.media_content_type or ""
@@ -124,9 +130,12 @@ async def handle_image_message(
             db,
             source_type="image",
         )
+    except httpx.RequestError as e:
+        logger.error("Failed to download image from Twilio", error=str(e), media_url=message.media_url)
+        return "Failed to download image. Please try sending again."
     except Exception as e:
-        print(f"Error processing image: {e}")
-        return f"Error processing image: {str(e)}"
+        logger.error("Error processing image", error=str(e), exc_info=True)
+        return "Sorry, I encountered an error while processing that image."
 
 
 async def handle_voice_message(
@@ -162,9 +171,12 @@ async def handle_voice_message(
             db,
             source_type="voice",
         )
+    except httpx.RequestError as e:
+        logger.error("Failed to download voice message from Twilio", error=str(e), media_url=message.media_url)
+        return "Failed to download voice message. Please try sending again."
     except Exception as e:
-        print(f"Error processing voice: {e}")
-        return f"Error processing voice message: {str(e)}"
+        logger.error("Error processing voice message", error=str(e), exc_info=True)
+        return "Sorry, I encountered an error while processing your voice message."
 
 
 def get_help_message() -> str:
@@ -192,7 +204,16 @@ def get_help_message() -> str:
 - "Show my categories"
 - "Add category Subscriptions"
 
+*Budget:*
+- "Set budget 5000"
+- "Check my budget status"
+
+*Export:*
+- "Export my expenses"
+- "Send me a CSV"
+
 *Other:*
+- "Change last expense to 300"
 - "Delete last expense"
 - "Help" - Show this message
 """

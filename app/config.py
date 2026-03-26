@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     # Encryption key for user API keys
     encryption_key: str = ""
 
+    # Redis URL
+    redis_url: str = "redis://localhost:6379"
+
     # Server
     host: str = "0.0.0.0"
     port: int = 8000
@@ -40,12 +43,21 @@ class Settings(BaseSettings):
         Render provides postgresql://, but we need postgresql+asyncpg://
         """
         url = self.database_url
-        # Handle various PostgreSQL URL formats
         if url.startswith("postgresql://"):
             url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
         elif url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql+asyncpg://", 1)
-        return url
+            
+        # asyncpg does not support sslmode in the URL query string
+        import urllib.parse
+        parsed = urllib.parse.urlparse(url)
+        query = dict(urllib.parse.parse_qsl(parsed.query))
+        query.pop("sslmode", None)
+        new_query = urllib.parse.urlencode(query)
+        
+        return urllib.parse.urlunparse(
+            (parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment)
+        )
 
     @property
     def sync_database_url(self) -> str:

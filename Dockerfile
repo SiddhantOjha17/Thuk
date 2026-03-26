@@ -48,12 +48,13 @@ RUN useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app
 USER appuser
 
-# Expose port
-EXPOSE 8000
+# Expose port (Fly.io default)
+EXPOSE 8080
+ENV PORT=8080
 
-# Health check
+# Health check (Using python httpx since we have it installed)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import httpx; httpx.get('http://localhost:8000/health')" || exit 1
+    CMD python -c "import httpx; httpx.get('http://localhost:8080/health')" || exit 1
 
 # Run migrations and start the application
 CMD ["./start.sh"]

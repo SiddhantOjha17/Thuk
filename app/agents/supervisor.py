@@ -1,8 +1,9 @@
 """Supervisor Agent - orchestrates the multi-agent system using LangGraph."""
 
+import asyncio
 from typing import Annotated, Literal
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
@@ -10,13 +11,20 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing_extensions import TypedDict
 
+from app.agents.budget_agent import BudgetAgent
 from app.agents.category_agent import CategoryAgent
 from app.agents.expense_agent import ExpenseAgent
+from app.agents.export_agent import ExportAgent
 from app.agents.query_agent import QueryAgent
 from app.agents.split_agent import SplitAgent
+from app.agents.intent_classifier import IntentClassifier
+from app.memory.redis_store import store
 from app.processors.text_parser import Intent, ParsedMessage, TextParser
 from app.utils.encryption import decrypt_api_key
+from app.utils.logging import get_logger
 from app.whatsapp.handlers import get_help_message
+
+logger = get_logger(__name__)
 
 
 class AgentState(TypedDict):
@@ -48,10 +56,32 @@ class SupervisorAgent:
         self.query_agent = QueryAgent()
         self.split_agent = SplitAgent()
         self.category_agent = CategoryAgent()
+        self.budget_agent = BudgetAgent()
+        self.export_agent = ExportAgent()
+        
+        # Intent Router fallback
+        self.intent_classifier = IntentClassifier(user)
+        
+        # Compile workflow once per agent instance
+        self.app = self.build_graph().compile()
 
     async def route_message(self, state: AgentState) -> AgentState:
         """Parse message and determine routing."""
+        # Handle implicit confirmations
+        msg_lower = state["user_message"].lower().strip()
+        if msg_lower in ["yes", "y", "haan", "delete"]:
+            is_pending = await store.get_flag(self.user.phone_number, "pending_delete")
+            if is_pending:
+                state["parsed"] = ParsedMessage(intent=Intent.DELETE_EXPENSE, raw_text=msg_lower)
+                return state
+
         parsed = self.text_parser.parse(state["user_message"])
+        
+        # Use LLM routing if regex couldn't confidently classify
+        if parsed.intent == Intent.UNKNOWN:
+            history = await store.get_history(self.user.phone_number, limit=6)
+            parsed = await self.intent_classifier.classify(state["user_message"], history)
+            
         state["parsed"] = parsed
         return state
 
@@ -71,6 +101,11 @@ class SupervisorAgent:
             Intent.SETTLE_DEBT: "settle",
             Intent.ADD_CATEGORY: "category_add",
             Intent.LIST_CATEGORIES: "category_list",
+            Intent.DELETE_EXPENSE: "expense_delete",
+            Intent.EDIT_EXPENSE: "expense_edit",
+            Intent.SET_BUDGET: "budget_set",
+            Intent.CHECK_BUDGET: "budget_check",
+            Intent.EXPORT_EXPENSES: "export",
             Intent.HELP: "help",
             Intent.UNKNOWN: "llm_fallback",
         }
@@ -79,12 +114,23 @@ class SupervisorAgent:
 
     async def handle_expense(self, state: AgentState) -> AgentState:
         """Handle expense addition."""
+        # We need history for contextual category detection
+        history_dicts = await store.get_history(self.user.phone_number, limit=6)
+        
         response = await self.expense_agent.add_expense(
             db=state["db"],
             user=state["user"],
             parsed=state["parsed"],
             source_type=state["source_type"],
+            history=history_dicts,
         )
+        
+        # Check budget warning if expense added
+        if "Added expense" in response:
+            warning = await self.budget_agent.check_budget(state["db"], state["user"])
+            if warning:
+                response += f"\n\n{warning}"
+                
         state["response"] = response
         return state
 
@@ -93,6 +139,54 @@ class SupervisorAgent:
         response = await self.expense_agent.delete_last(
             db=state["db"],
             user=state["user"],
+        )
+        state["response"] = response
+        return state
+
+    async def handle_expense_edit(self, state: AgentState) -> AgentState:
+        """Handle editing the last expense."""
+        parsed = state["parsed"]
+        response = await self.expense_agent.edit_last(
+            db=state["db"],
+            user=state["user"],
+            new_amount=parsed.amount,
+            new_description=parsed.description,
+        )
+        state["response"] = response
+        return state
+
+    async def handle_budget_set(self, state: AgentState) -> AgentState:
+        """Handle setting a monthly budget."""
+        parsed = state["parsed"]
+        if not parsed.amount:
+            response = "Please provide a budget amount, e.g., 'set budget 5000'."
+        else:
+            response = await self.budget_agent.set_budget(
+                db=state["db"],
+                user=state["user"],
+                amount=parsed.amount,
+                currency=parsed.currency,
+            )
+        state["response"] = response
+        return state
+
+    async def handle_budget_check(self, state: AgentState) -> AgentState:
+        """Handle checking the monthly budget."""
+        response = await self.budget_agent.get_budget_status(
+            db=state["db"],
+            user=state["user"],
+        )
+        state["response"] = response
+        return state
+
+    async def handle_export(self, state: AgentState) -> AgentState:
+        """Handle CSV export."""
+        # For simplicity in graph, we use a generic request URL, this can be improved
+        # or we just rely on the fallback webhook base_url setting.
+        response = await self.export_agent.export_and_get_url(
+            db=state["db"],
+            user=state["user"],
+            request_base_url="https://thuk.fly.dev" # fallback
         )
         state["response"] = response
         return state
@@ -207,6 +301,10 @@ Supported actions:
         workflow.add_node("router", self.route_message)
         workflow.add_node("expense", self.handle_expense)
         workflow.add_node("expense_delete", self.handle_expense_delete)
+        workflow.add_node("expense_edit", self.handle_expense_edit)
+        workflow.add_node("budget_set", self.handle_budget_set)
+        workflow.add_node("budget_check", self.handle_budget_check)
+        workflow.add_node("export", self.handle_export)
         workflow.add_node("query", self.handle_query)
         workflow.add_node("split", self.handle_split)
         workflow.add_node("debts", self.handle_debts)
@@ -226,6 +324,10 @@ Supported actions:
             {
                 "expense": "expense",
                 "expense_delete": "expense_delete",
+                "expense_edit": "expense_edit",
+                "budget_set": "budget_set",
+                "budget_check": "budget_check",
+                "export": "export",
                 "query": "query",
                 "split": "split",
                 "debts": "debts",
@@ -238,8 +340,9 @@ Supported actions:
         )
 
         # All agents end after processing
-        for node in ["expense", "expense_delete", "query", "split", "debts",
-                     "settle", "category_add", "category_list", "help", "llm_fallback"]:
+        for node in ["expense", "expense_delete", "expense_edit", "budget_set", "budget_check", "export",
+                     "query", "split", "debts", "settle", "category_add", 
+                     "category_list", "help", "llm_fallback"]:
             workflow.add_edge(node, END)
 
         return workflow
@@ -260,11 +363,17 @@ Supported actions:
         Returns:
             Response message
         """
-        workflow = self.build_graph()
-        app = workflow.compile()
+        # Load history
+        history_dicts = await store.get_history(self.user.phone_number, limit=6)
+        messages = []
+        for msg in history_dicts:
+            if msg["role"] == "user":
+                messages.append(HumanMessage(content=msg["content"]))
+            else:
+                messages.append(AIMessage(content=msg["content"]))
 
         initial_state: AgentState = {
-            "messages": [],
+            "messages": messages,
             "user_message": message,
             "parsed": None,
             "response": "",
@@ -273,5 +382,22 @@ Supported actions:
             "source_type": source_type,
         }
 
-        result = await app.ainvoke(initial_state)
-        return result["response"]
+        try:
+            # 30-second timeout for the entire agent workflow
+            result = await asyncio.wait_for(self.app.ainvoke(initial_state), timeout=30.0)
+            
+            response_text = result["response"]
+            
+            # Save messages on success
+            await store.add_message(self.user.phone_number, "user", message)
+            await store.add_message(self.user.phone_number, "assistant", response_text)
+            
+            return response_text
+        except asyncio.TimeoutError:
+            logger.error("Agent workflow timed out", user_id=str(self.user.id))
+            await db.rollback()
+            return "The request took too long to process. Please try again."
+        except Exception as e:
+            logger.error("Error in agent workflow", error=str(e), user_id=str(self.user.id), exc_info=True)
+            await db.rollback()
+            return "Sorry, I encountered an internal error processing your request."

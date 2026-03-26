@@ -13,6 +13,7 @@ engine = create_async_engine(
     settings.async_database_url,
     echo=settings.debug,
     pool_pre_ping=True,
+    connect_args={"ssl": False},
 )
 
 async_session_factory = async_sessionmaker(

@@ -7,4 +7,6 @@ echo "Running database migrations..."
 alembic upgrade head
 
 echo "Starting Thuk..."
-exec uvicorn app.main:app --host 0.0.0.0 --port 8000
+# Use PORT from environment or default to 8080 (Fly.io default)
+PORT="${PORT:-8080}"
+exec uvicorn app.main:app --host 0.0.0.0 --port $PORT
