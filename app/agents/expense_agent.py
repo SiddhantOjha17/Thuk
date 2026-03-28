@@ -21,6 +21,10 @@ class CategoryDetectionResult(BaseModel):
         None, 
         description="The best matching category name from the allowed list, or None if it should be 'Other'."
     )
+    short_description: str | None = Field(
+        None,
+        description="A very short and clean description of the transaction (e.g. 'football turf', 'netflix', 'groceries'). This is optional."
+    )
 
 
 class ExpenseAgent:
@@ -32,7 +36,7 @@ class ExpenseAgent:
         description: str,
         available_categories: list[str],
         history: list[dict] | None = None,
-    ) -> str | None:
+    ) -> tuple[str | None, str | None]:
         """Use LLM to detect the best category for an expense description.
 
         Args:
@@ -42,7 +46,7 @@ class ExpenseAgent:
             history: Conversation history for context
 
         Returns:
-            Best matching category name, or None if unsure
+            Tuple of (category_name, short_description)
         """
         if not description or not available_categories:
             return None
@@ -60,7 +64,8 @@ class ExpenseAgent:
 
 Rules:
 - If the expense clearly fits a category, return that category name exactly as listed.
-- If unsure or it could fit multiple, return null/None.
+- If unsure or it could fit multiple, return null/None for the category.
+- Also extract a concise `short_description` (1-3 words) directly describing the transaction (e.g., 'football turf', 'uber ride'). 
 - Use the conversation history for context if the description is ambiguous.
 - Common examples:
   - "sandwich", "pizza", "dinner" -> Food
@@ -81,20 +86,23 @@ Rules:
 
             result: CategoryDetectionResult = await llm.ainvoke(messages)
             detected = result.category_name
+            short_desc = result.short_description
 
             if not detected:
-                return None
+                return None, short_desc
 
             # Validate it's one of the available categories
             for cat in available_categories:
                 if cat.lower() == detected.lower():
-                    return cat
+                    return cat, short_desc
 
-            return None
+            return None, short_desc
 
         except Exception as e:
-            print(f"LLM category detection failed: {e}")
-            return None
+            from app.utils.logging import get_logger
+            logger = get_logger(__name__)
+            logger.error("LLM category detection failed", error=str(e))
+            return None, None
 
     async def add_expense(
         self,
@@ -130,19 +138,44 @@ Rules:
                 category_source = "keyword"
 
         # 2. If no category found, use LLM to detect
+        short_desc = parsed.description
         if category is None and parsed.description:
             # Get available categories for this user
             user_categories = await crud.get_user_categories(db, user.id)
             category_names = [c.name for c in user_categories]
 
-            detected_category_name = await self._detect_category_with_llm(
+            detected_category_name, extracted_desc = await self._detect_category_with_llm(
                 user, parsed.description, category_names, history
             )
+            
+            if extracted_desc:
+                short_desc = extracted_desc
 
             if detected_category_name:
                 category = await crud.get_category_by_name(db, user.id, detected_category_name)
                 if category:
                     category_source = "llm"
+
+        # 3. Intercept if category is STILL None
+        if category is None:
+            # Save pending expense to Redis
+            import json
+            pending_data = {
+                "amount": str(parsed.amount),
+                "currency": parsed.currency,
+                "description": short_desc,
+                "expense_date": parsed.expense_date.isoformat() if parsed.expense_date else None,
+                "source_type": source_type
+            }
+            await store.set_flag(user.phone_number, "pending_expense", json.dumps(pending_data), ttl=300)
+            
+            # Format categories for interactive reply
+            user_categories = await crud.get_user_categories(db, user.id)
+            cats_text = "\n".join([f"{i+1}. {c.name}" for i, c in enumerate(user_categories)])
+            cats_text += f"\n{len(user_categories)+1}. Others"
+            cats_text += "\n\n*(Tip: Or just type a new category name!)*"
+            
+            return f"I couldn't be sure about the category. What is this for?\n{cats_text}"
 
         # Create the expense
         expense = await crud.create_expense(
@@ -150,7 +183,7 @@ Rules:
             user_id=user.id,
             amount=parsed.amount,
             currency=parsed.currency,
-            description=parsed.description,
+            description=short_desc, # Use the optionally refined short description
             category_id=category.id if category else None,
             source_type=SourceType(source_type),
             expense_date=parsed.expense_date or date.today(),
@@ -238,3 +271,85 @@ Rules:
 
         amount_str = format_amount(expense.amount, expense.currency)
         return f"Updated expense to: {amount_str}"
+
+    async def _resolve_category_reply(self, user, reply_text: str, categories: list[str]) -> str:
+        """Use LLM to cleanly map a user's reply to a category or 'Others', handling typos."""
+        try:
+            from pydantic import BaseModel, Field
+            class ResolutionResult(BaseModel):
+                mapped_category: str = Field(description="The exact matched existing category, 'Others', or the brand new cleanly capitalized category name.")
+
+            api_key = decrypt_api_key(user.openai_api_key_encrypted)
+            llm = ChatOpenAI(
+                api_key=api_key,
+                model="gpt-4o-mini",
+                temperature=0,
+            ).with_structured_output(ResolutionResult)
+
+            cat_str = ", ".join(categories)
+            prompt = f"""The user is answering a prompt to select a category. 
+Available existing categories: {cat_str}
+Number mappings: 1 to N map to the list above in order, where N+1 maps to 'Others'.
+User reply: '{reply_text}'
+
+Task:
+1. If the user replied with a number, map it correctly.
+2. If they replied with text, check if it's a typo of an existing category. If so, return the EXACT existing category.
+3. If they meant 'Others', return 'Others'.
+4. If it's a completely new category (e.g. 'Gaming', 'Gym'), return the cleanly formatted, Capitalized new category name.
+Only return the final string."""
+
+            res = await llm.ainvoke([SystemMessage(content=prompt)])
+            return res.mapped_category
+        except Exception as e:
+            from app.utils.logging import get_logger
+            logger = get_logger(__name__)
+            logger.error("LLM category resolution failed", error=str(e))
+            return reply_text.strip().capitalize()
+
+    async def resolve_pending(self, db: AsyncSession, user, reply_text: str) -> str:
+        """Resolve a pending category assignment."""
+        import json
+        from decimal import Decimal
+        from datetime import date
+        
+        pending_str = await store.get_flag(user.phone_number, "pending_expense")
+        if not pending_str:
+            return "No pending expense found or it expired."
+            
+        pending_data = json.loads(pending_str)
+        user_categories = await crud.get_user_categories(db, user.id)
+        cat_names = [c.name for c in user_categories]
+        
+        # Determine the target category
+        mapped = await self._resolve_category_reply(user, reply_text, cat_names)
+        
+        category = None
+        if mapped != "Others":
+            category = await crud.get_category_by_name(db, user.id, mapped)
+            if not category:
+                # Create the new category!
+                category = await crud.create_category(db, user.id, mapped)
+
+        # Reconstruct parsed details
+        exp_date_str = pending_data.get("expense_date")
+        expense_date = date.fromisoformat(exp_date_str) if exp_date_str else date.today()
+
+        # Create expense
+        await crud.create_expense(
+            db=db,
+            user_id=user.id,
+            amount=Decimal(pending_data["amount"]),
+            currency=pending_data["currency"],
+            description=pending_data.get("description"),
+            category_id=category.id if category else None,
+            source_type=SourceType(pending_data.get("source_type", "text")),
+            expense_date=expense_date,
+        )
+        
+        # Clear the flag
+        await store.delete_flag(user.phone_number, "pending_expense")
+        
+        amount_str = format_amount(Decimal(pending_data["amount"]), pending_data["currency"])
+        cat_str = f" ({category.name})" if category else " (Others)"
+        return f"Added expense: {amount_str}{cat_str}"

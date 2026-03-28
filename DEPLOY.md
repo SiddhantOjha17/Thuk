@@ -42,7 +42,7 @@ Set your required Twilio webhook credentials and encryption key:
 ```bash
 fly secrets set \
   TWILIO_ACCOUNT_SID=AC18415783011291151424350257481585 \
-  TWILIO_AUTH_TOKEN=1184dd7103e5a7068148518d5c9acfa2\
+  TWILIO_AUTH_TOKEN=1184dd7103e5a7068148518d5c9acfa2 \
   ENCRYPTION_KEY=QAuWYo3PJMW-y0Zs7EhbimL2QA10SsPmlxzazDSYpGM= \
   WEBHOOK_BASE_URL=https://thuk-bot.fly.dev
 ```

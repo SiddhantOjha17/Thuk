@@ -199,7 +199,7 @@ async def get_expense_summary(
             Category.name,
             func.sum(Expense.amount).label("total"),
         )
-        .join(Category, Expense.category_id == Category.id)
+        .outerjoin(Category, Expense.category_id == Category.id)
         .where(
             and_(
                 Expense.user_id == user_id,
@@ -215,7 +215,7 @@ async def get_expense_summary(
         cat_query = cat_query.where(Expense.expense_date <= end_date)
 
     cat_result = await db.execute(cat_query)
-    by_category = {row.name: row.total for row in cat_result.all()}
+    by_category = {row.name or "Others": row.total for row in cat_result.all()}
 
     return {
         "total_amount": row.total or Decimal("0"),

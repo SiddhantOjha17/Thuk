@@ -67,13 +67,19 @@ class SupervisorAgent:
 
     async def route_message(self, state: AgentState) -> AgentState:
         """Parse message and determine routing."""
-        # Handle implicit confirmations
+        # Handle implicit confirmations for deletes
         msg_lower = state["user_message"].lower().strip()
         if msg_lower in ["yes", "y", "haan", "delete"]:
             is_pending = await store.get_flag(self.user.phone_number, "pending_delete")
             if is_pending:
                 state["parsed"] = ParsedMessage(intent=Intent.DELETE_EXPENSE, raw_text=msg_lower)
                 return state
+                
+        # Intercept category resolution flow
+        is_pending_expense = await store.get_flag(self.user.phone_number, "pending_expense")
+        if is_pending_expense:
+            state["parsed"] = ParsedMessage(intent=Intent.RESOLVE_CATEGORY, raw_text=state["user_message"])
+            return state
 
         parsed = self.text_parser.parse(state["user_message"])
         
@@ -101,6 +107,7 @@ class SupervisorAgent:
             Intent.SETTLE_DEBT: "settle",
             Intent.ADD_CATEGORY: "category_add",
             Intent.LIST_CATEGORIES: "category_list",
+            Intent.RESOLVE_CATEGORY: "expense_resolve",
             Intent.DELETE_EXPENSE: "expense_delete",
             Intent.EDIT_EXPENSE: "expense_edit",
             Intent.SET_BUDGET: "budget_set",
@@ -123,6 +130,23 @@ class SupervisorAgent:
             parsed=state["parsed"],
             source_type=state["source_type"],
             history=history_dicts,
+        )
+        
+        # Check budget warning if expense added
+        if "Added expense" in response:
+            warning = await self.budget_agent.check_budget(state["db"], state["user"])
+            if warning:
+                response += f"\n\n{warning}"
+                
+        state["response"] = response
+        return state
+
+    async def handle_expense_category_resolve(self, state: AgentState) -> AgentState:
+        """Handle resolving an ambiguous category."""
+        response = await self.expense_agent.resolve_pending(
+            db=state["db"],
+            user=state["user"],
+            reply_text=state["user_message"],
         )
         
         # Check budget warning if expense added
@@ -302,6 +326,7 @@ Supported actions:
         workflow.add_node("expense", self.handle_expense)
         workflow.add_node("expense_delete", self.handle_expense_delete)
         workflow.add_node("expense_edit", self.handle_expense_edit)
+        workflow.add_node("expense_resolve", self.handle_expense_category_resolve)
         workflow.add_node("budget_set", self.handle_budget_set)
         workflow.add_node("budget_check", self.handle_budget_check)
         workflow.add_node("export", self.handle_export)
@@ -325,6 +350,7 @@ Supported actions:
                 "expense": "expense",
                 "expense_delete": "expense_delete",
                 "expense_edit": "expense_edit",
+                "expense_resolve": "expense_resolve",
                 "budget_set": "budget_set",
                 "budget_check": "budget_check",
                 "export": "export",
@@ -340,7 +366,7 @@ Supported actions:
         )
 
         # All agents end after processing
-        for node in ["expense", "expense_delete", "expense_edit", "budget_set", "budget_check", "export",
+        for node in ["expense", "expense_delete", "expense_edit", "expense_resolve", "budget_set", "budget_check", "export",
                      "query", "split", "debts", "settle", "category_add", 
                      "category_list", "help", "llm_fallback"]:
             workflow.add_edge(node, END)

@@ -24,6 +24,7 @@ class Intent(str, Enum):
     SET_BUDGET = "set_budget"
     CHECK_BUDGET = "check_budget"
     EXPORT_EXPENSES = "export_expenses"
+    RESOLVE_CATEGORY = "resolve_category"
     HELP = "help"
     UNKNOWN = "unknown"
 
