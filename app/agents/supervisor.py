@@ -14,9 +14,9 @@ from typing_extensions import TypedDict
 from app.agents.budget_agent import BudgetAgent
 from app.agents.category_agent import CategoryAgent
 from app.agents.expense_agent import ExpenseAgent
-from app.agents.export_agent import ExportAgent
-from app.agents.query_agent import QueryAgent
 from app.agents.split_agent import SplitAgent
+from app.agents.text2sql_agent import Text2SQLAgent
+from app.agents.export_agent import ExportAgent
 from app.agents.intent_classifier import IntentClassifier
 from app.memory.redis_store import store
 from app.processors.text_parser import Intent, ParsedMessage, TextParser
@@ -51,9 +51,8 @@ class SupervisorAgent:
             model="gpt-4o-mini",
             temperature=0,
         )
-        self.text_parser = TextParser()
         self.expense_agent = ExpenseAgent()
-        self.query_agent = QueryAgent()
+        self.query_agent = Text2SQLAgent(user)
         self.split_agent = SplitAgent()
         self.category_agent = CategoryAgent()
         self.budget_agent = BudgetAgent()
@@ -66,27 +65,16 @@ class SupervisorAgent:
         self.app = self.build_graph().compile()
 
     async def route_message(self, state: AgentState) -> AgentState:
-        """Parse message and determine routing."""
-        # Handle implicit confirmations for deletes
-        msg_lower = state["user_message"].lower().strip()
-        if msg_lower in ["yes", "y", "haan", "delete"]:
-            is_pending = await store.get_flag(self.user.phone_number, "pending_delete")
-            if is_pending:
-                state["parsed"] = ParsedMessage(intent=Intent.DELETE_EXPENSE, raw_text=msg_lower)
-                return state
-                
-        # Intercept category resolution flow
+        """Parse message and determine routing using LLM logic."""
+        # Intercept category resolution flow (stateful manual override)
         is_pending_expense = await store.get_flag(self.user.phone_number, "pending_expense")
         if is_pending_expense:
             state["parsed"] = ParsedMessage(intent=Intent.RESOLVE_CATEGORY, raw_text=state["user_message"])
             return state
 
-        parsed = self.text_parser.parse(state["user_message"])
-        
-        # Use LLM routing if regex couldn't confidently classify
-        if parsed.intent == Intent.UNKNOWN:
-            history = await store.get_history(self.user.phone_number, limit=6)
-            parsed = await self.intent_classifier.classify(state["user_message"], history)
+        # Fully LLM-driven Intent Parsing for everything else
+        history = await store.get_history(self.user.phone_number, limit=6)
+        parsed = await self.intent_classifier.classify(state["user_message"], history)
             
         state["parsed"] = parsed
         return state
@@ -114,6 +102,7 @@ class SupervisorAgent:
             Intent.CHECK_BUDGET: "budget_check",
             Intent.EXPORT_EXPENSES: "export",
             Intent.HELP: "help",
+            Intent.CLARIFY: "clarify",
             Intent.UNKNOWN: "llm_fallback",
         }
 
@@ -173,8 +162,7 @@ class SupervisorAgent:
         response = await self.expense_agent.edit_last(
             db=state["db"],
             user=state["user"],
-            new_amount=parsed.amount,
-            new_description=parsed.description,
+            instructions=parsed.edit_instructions or state["user_message"],
         )
         state["response"] = response
         return state
@@ -216,11 +204,10 @@ class SupervisorAgent:
         return state
 
     async def handle_query(self, state: AgentState) -> AgentState:
-        """Handle expense queries."""
-        response = await self.query_agent.get_summary(
+        """Handle expense queries using Text2SQL analytics."""
+        response = await self.query_agent.execute_query(
             db=state["db"],
-            user=state["user"],
-            parsed=state["parsed"],
+            natural_query=state["user_message"],
         )
         state["response"] = response
         return state
@@ -260,7 +247,8 @@ class SupervisorAgent:
 
     async def handle_category_add(self, state: AgentState) -> AgentState:
         """Handle category addition."""
-        name = self.category_agent.extract_category_name(state["user_message"])
+        name = state["parsed"].extracted_category_name
+        
         if name:
             response = await self.category_agent.add_category(
                 db=state["db"],
@@ -268,7 +256,7 @@ class SupervisorAgent:
                 name=name,
             )
         else:
-            response = "Please specify a category name (e.g., 'add category Subscriptions')."
+            response = "Please specify a category name (e.g., 'Add a category for Gym')."
         state["response"] = response
         return state
 
@@ -284,6 +272,12 @@ class SupervisorAgent:
     async def handle_help(self, state: AgentState) -> AgentState:
         """Handle help request."""
         state["response"] = get_help_message()
+        return state
+
+    async def handle_clarify(self, state: AgentState) -> AgentState:
+        """Handle intentionally ambiguous queries where the LLM requires clarification."""
+        clarification = state["parsed"].raw_text if state["parsed"] and state["parsed"].raw_text else "I didn't quite catch that. Could you please clarify what you mean?"
+        state["response"] = clarification
         return state
 
     async def handle_llm_fallback(self, state: AgentState) -> AgentState:
@@ -337,6 +331,7 @@ Supported actions:
         workflow.add_node("category_add", self.handle_category_add)
         workflow.add_node("category_list", self.handle_category_list)
         workflow.add_node("help", self.handle_help)
+        workflow.add_node("clarify", self.handle_clarify)
         workflow.add_node("llm_fallback", self.handle_llm_fallback)
 
         # Set entry point
@@ -361,6 +356,7 @@ Supported actions:
                 "category_add": "category_add",
                 "category_list": "category_list",
                 "help": "help",
+                "clarify": "clarify",
                 "llm_fallback": "llm_fallback",
             },
         )
@@ -368,7 +364,7 @@ Supported actions:
         # All agents end after processing
         for node in ["expense", "expense_delete", "expense_edit", "expense_resolve", "budget_set", "budget_check", "export",
                      "query", "split", "debts", "settle", "category_add", 
-                     "category_list", "help", "llm_fallback"]:
+                     "category_list", "help", "clarify", "llm_fallback"]:
             workflow.add_edge(node, END)
 
         return workflow

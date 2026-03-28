@@ -25,6 +25,7 @@ class Intent(str, Enum):
     CHECK_BUDGET = "check_budget"
     EXPORT_EXPENSES = "export_expenses"
     RESOLVE_CATEGORY = "resolve_category"
+    CLARIFY = "clarify"
     HELP = "help"
     UNKNOWN = "unknown"
 
@@ -43,6 +44,11 @@ class ParsedMessage:
     split_people: list[str] | None = None
     person_name: str | None = None
     time_range: str | None = None  # "today", "yesterday", "this_week", "this_month"
+    
+    # New powerful fields for LLM generic extraction
+    extracted_category_name: str | None = None
+    edit_instructions: str | None = None
+
     raw_text: str = ""
 
 

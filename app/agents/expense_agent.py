@@ -67,11 +67,8 @@ Rules:
 - If unsure or it could fit multiple, return null/None for the category.
 - Also extract a concise `short_description` (1-3 words) directly describing the transaction (e.g., 'football turf', 'uber ride'). 
 - Use the conversation history for context if the description is ambiguous.
-- Common examples:
-  - "sandwich", "pizza", "dinner" -> Food
-  - "uber", "metro", "parking" -> Transport
-  - "netflix", "movie" -> Entertainment
-  - "amazon", "clothes" -> Shopping"""
+- Your output should be purely categorical and descriptive.
+"""
 
             messages = [SystemMessage(content=system_prompt)]
             
@@ -240,20 +237,23 @@ Rules:
         self,
         db: AsyncSession,
         user,
-        new_amount: Decimal | None = None,
-        new_description: str | None = None,
+        instructions: str,
     ) -> str:
-        """Edit the most recent expense.
+        """Edit the most recent expense using natural language instructions.
 
         Args:
             db: Database session
             user: User model instance
-            new_amount: New amount (optional)
-            new_description: New description (optional)
+            instructions: Natural language instructions (e.g., 'shift it to groceries')
 
         Returns:
             Response message
         """
+        from pydantic import BaseModel, Field
+        from decimal import Decimal
+        from langchain_openai import ChatOpenAI
+        from langchain_core.messages import SystemMessage
+
         # Get last expense
         expenses = await crud.get_user_expenses(db, user.id, limit=1)
         if not expenses:
@@ -261,16 +261,69 @@ Rules:
 
         expense = expenses[0]
 
-        # Update fields
-        if new_amount is not None:
-            expense.amount = new_amount
-        if new_description is not None:
-            expense.description = new_description
+        class ExpensePatch(BaseModel):
+            new_amount: float | None = Field(None, description="The updated numeric amount, if the user requested to change the amount.")
+            new_description: str | None = Field(None, description="The updated description, if the user requested to change what it was for.")
+            new_category_name: str | None = Field(None, description="The distinct new category name, if the user requested to shift/re-categorize it.")
+
+        api_key = decrypt_api_key(user.openai_api_key_encrypted)
+        llm = ChatOpenAI(
+            api_key=api_key,
+            model="gpt-4o-mini",
+            temperature=0,
+        ).with_structured_output(ExpensePatch)
+
+        user_categories = await crud.get_user_categories(db, user.id)
+        cat_str = ", ".join([c.name for c in user_categories])
+        curr_cat = expense.category.name if expense.category else 'Others'
+
+        prompt = f"""Apply this exact user instruction: '{instructions}' to the user's most recent expense object.
+        
+Current Amount: {expense.amount}
+Current Description: {expense.description}
+Current Category: {curr_cat}
+
+Available Existing Categories: {cat_str}
+
+RULES:
+1. Return ONLY the fields that should mathematically or categorically change.
+2. If changing the category, match carefully against the available lists. If it is entirely new, return the newly capitalized spelled category.
+3. If an instruction says "shift this 278 expense to food", it means changing the category, NOT the amount or description.
+"""
+        try:
+            patch: ExpensePatch = await llm.ainvoke([SystemMessage(content=prompt)])
+        except Exception as e:
+            return f"I couldn't process the edit instruction: {str(e)}"
+
+        # Update fields dynamically
+        changes = []
+        if patch.new_amount is not None:
+            expense.amount = Decimal(str(patch.new_amount))
+            changes.append(f"amount to {patch.new_amount}")
+            
+        if patch.new_description is not None:
+            expense.description = patch.new_description
+            changes.append(f"description to '{patch.new_description}'")
+            
+        if patch.new_category_name is not None and patch.new_category_name.lower() != curr_cat.lower():
+            if patch.new_category_name.lower() == "others":
+                expense.category_id = None
+                changes.append("category to Others")
+            else:
+                cat = await crud.get_category_by_name(db, user.id, patch.new_category_name)
+                if not cat:
+                    cat = await crud.create_category(db, user.id, patch.new_category_name)
+                expense.category_id = cat.id
+                changes.append(f"category to {cat.name}")
+
+        if not changes:
+            return "No specific modifications were understood from your message. Try being more direct (e.g. 'Make it 500 dollars')."
 
         await db.flush()
 
+        # Format final
         amount_str = format_amount(expense.amount, expense.currency)
-        return f"Updated expense to: {amount_str}"
+        return f"Updated expense: {amount_str}. (Changed {', '.join(changes)})"
 
     async def _resolve_category_reply(self, user, reply_text: str, categories: list[str]) -> str:
         """Use LLM to cleanly map a user's reply to a category or 'Others', handling typos."""
