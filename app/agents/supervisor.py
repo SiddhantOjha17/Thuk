@@ -281,34 +281,30 @@ class SupervisorAgent:
         return state
 
     async def handle_llm_fallback(self, state: AgentState) -> AgentState:
-        """Use LLM for ambiguous messages."""
-        # Create context-aware prompt
-        system_prompt = """You are Thuk, a friendly WhatsApp expense tracker bot.
-
-The user sent a message that wasn't clearly understood. Help them by:
-1. Acknowledging their message
-2. Suggesting how they might rephrase it
-3. Providing examples of supported commands
-
-Keep responses concise and friendly. Do not use emojis.
-
-Supported actions:
-- Add expenses: "Spent 500 on food"
-- Query expenses: "How much did I spend today?"
-- Split payments: "2000 split with 4 people"
-- Check debts: "Who owes me?"
-- Settle debts: "Rahul paid me back"
-- Categories: "Add category Subscriptions" or "Show my categories"
-- Delete: "Delete last expense"
-"""
-
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=state["user_message"]),
-        ]
-
-        response = await self.llm.ainvoke(messages)
-        state["response"] = response.content
+        """Last resort - try to handle as expense, or give a minimal help message."""
+        msg = state["user_message"]
+        
+        # Check if there's any number in the message - if so, try to route to expense
+        import re
+        if re.search(r'\d+', msg):
+            # Has a number, probably an expense - try expense handler
+            history = await store.get_history(self.user.phone_number, limit=6)
+            reclassified = await self.intent_classifier.classify(
+                f"ADD_EXPENSE OVERRIDE: The user wants to add this expense: {msg}", history
+            )
+            reclassified.intent = Intent.ADD_EXPENSE
+            if reclassified.amount is None:
+                # Try to extract a number
+                nums = re.findall(r'[\d]+(?:\.[\d]+)?', msg)
+                if nums:
+                    from decimal import Decimal
+                    reclassified.amount = Decimal(nums[0])
+            if reclassified.description is None:
+                reclassified.description = msg
+            state["parsed"] = reclassified
+            return await self.handle_expense(state)
+        
+        state["response"] = "I didn't quite understand that. Try something like 'Spent 500 on food' or type 'help' to see all commands."
         return state
 
     def build_graph(self) -> StateGraph:

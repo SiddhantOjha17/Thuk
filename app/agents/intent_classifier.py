@@ -80,34 +80,33 @@ class IntentClassifier:
             ParsedMessage with all extracted fields
         """
         today = date.today().isoformat()
-        system_prompt = f"""You are Thuk's Intent Classification Engine.
-Your singular job is to read the latest user message, consider the conversational memory if relevant, and extract the precise intent along with any underlying parameters. Do NOT guess.
+        system_prompt = f"""You are Thuk's Intent Classification Engine. Your job is to classify user messages for a personal expense tracker.
 
 Current Date: {today}
 
-RULES:
-1. Identify the logical Intent from the allowed enum.
-2. Rely heavily on the provided conversation history to understand context for short replies (like "yes", "shift it", "delete").
-3. If a user is giving an instruction that is totally ambiguous or lacks crucial parameters for its intent, classify as `CLARIFY` and provide a friendly `clarification_question`.
+CRITICAL RULE: When in doubt, assume ADD_EXPENSE. Users message this bot to track spending. Short messages like "297 groceries", "500 food", "paid 100 for lunch" are ALWAYS ADD_EXPENSE. Never ask for clarification on something that is clearly an expense.
 
-SUPPORTED INTENTS:
-- ADD_EXPENSE: A new transaction or purchase.
-- QUERY_EXPENSES: Asking for summaries, lists, analytics, or comparisons.
-- EDIT_EXPENSE: Modifying a previously entered expense. (Extract `edit_instructions`).
-- SPLIT_PAYMENT: Dividing an expense among people.
-- CHECK_DEBTS: Checking who owes them money.
-- SETTLE_DEBT: Marking a balance as paid off.
-- ADD_CATEGORY: Creating a brand new organizational category. (Extract `extracted_category_name`).
-- LIST_CATEGORIES: Viewing existing categories.
-- DELETE_EXPENSE: Erasing an expense.
-- SET_BUDGET: Setting a spending limit.
-- CHECK_BUDGET: Viewing current limits vs spending.
-- EXPORT_EXPENSES: Creating a CSV or data export.
-- HELP: Asking for commands or assistance.
-- CLARIFY: Use ONLY when perfectly ambiguous and cannot be securely deduced from context.
-- UNKNOWN: Nonsense input completely unrelated to personal finance.
+ROUTING RULES:
+- If there is ANY amount + ANY item/place/person mentioned → ADD_EXPENSE
+- If it asks "how much", "show", "summary", "spent" as a question → QUERY_EXPENSES  
+- If it mentions "split" or "divide" or "among" → SPLIT_PAYMENT
+- If it mentions editing/changing/correcting a past entry → EDIT_EXPENSE
+- If it asks "who owes" or "debts" → CHECK_DEBTS
+- If it says someone "paid back" → SETTLE_DEBT
+- If it asks to "add a category" → ADD_CATEGORY
+- If it asks to "show categories" → LIST_CATEGORIES
+- If it asks to delete → DELETE_EXPENSE
+- If it mentions setting/checking a budget → SET_BUDGET / CHECK_BUDGET
+- If it says export/download/CSV → EXPORT_EXPENSES
+- If it asks for help or commands → HELP
+- CLARIFY: Use ONLY when there is NO amount whatsoever and intent is completely unclear
+- UNKNOWN: ONLY for messages clearly unrelated to money/expenses (greetings with no context, random text)
 
-Do your best to infer parameters strictly from the natural text provided."""
+SUPPORTED INTENTS: ADD_EXPENSE, QUERY_EXPENSES, EDIT_EXPENSE, SPLIT_PAYMENT, CHECK_DEBTS, SETTLE_DEBT, ADD_CATEGORY, LIST_CATEGORIES, DELETE_EXPENSE, SET_BUDGET, CHECK_BUDGET, EXPORT_EXPENSES, HELP, CLARIFY, UNKNOWN
+
+IMPORTANT: If a message comes from a bank screenshot or payment app (e.g. starts with "From bank transaction"), treat the extracted amount and merchant as an ADD_EXPENSE. Extract the amount and merchant name as the description.
+
+Use conversation history to understand context for replies like "yes", "delete that", "change it"."""
 
         messages = [SystemMessage(content=system_prompt)]
         
