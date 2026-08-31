@@ -13,7 +13,11 @@ engine = create_async_engine(
     settings.async_database_url,
     echo=settings.debug,
     pool_pre_ping=True,
-    connect_args={"ssl": settings.db_ssl},
+    connect_args={
+        # "require" encrypts without verifying cert — needed for Supabase pooler
+        "ssl": "require" if settings.db_ssl else False,
+        "statement_cache_size": 0,
+    },
 )
 
 async_session_factory = async_sessionmaker(
