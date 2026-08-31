@@ -1,75 +1,105 @@
-"""Tests for TextParser intent detection."""
+"""Tests for get_instant_intent and parse_amount utilities."""
 
 from decimal import Decimal
 
-from app.processors.text_parser import Intent, TextParser
+import pytest
+
+from app.processors.text_parser import Intent, get_instant_intent
+from app.utils.currency import parse_amount, detect_currency
 
 
-def test_add_expense_parsing():
-    """Test parsing expense addition."""
-    parser = TextParser()
-    
-    # Simple explicit intent
-    parsed = parser.parse("Spent 500 on coffee")
-    assert parsed.intent == Intent.ADD_EXPENSE
-    assert parsed.amount == Decimal("500")
-    assert parsed.description == "coffee"
-    assert parsed.category_hint == "Food"
-    
-    # Implicit expense (just amount)
-    parsed = parser.parse("2500 for internet bill")
-    assert parsed.intent == Intent.ADD_EXPENSE
-    assert parsed.amount == Decimal("2500")
-    assert parsed.description == "internet bill"
-    assert parsed.category_hint == "Bills"
-    
-    # Different currencies
-    parsed = parser.parse("Paid $50 for netflix")
-    assert parsed.intent == Intent.ADD_EXPENSE
-    assert parsed.amount == Decimal("50")
-    assert parsed.currency == "USD"
+# ── get_instant_intent ────────────────────────────────────────────────────────
+
+class TestInstantIntent:
+    def test_help(self):
+        assert get_instant_intent("help") == Intent.HELP
+        assert get_instant_intent("?") == Intent.HELP
+        assert get_instant_intent("HELP") == Intent.HELP
+
+    def test_export(self):
+        assert get_instant_intent("export") == Intent.EXPORT_EXPENSES
+        assert get_instant_intent("export my expenses") == Intent.EXPORT_EXPENSES
+        assert get_instant_intent("download csv") == Intent.EXPORT_EXPENSES
+
+    def test_list_categories(self):
+        assert get_instant_intent("show categories") == Intent.LIST_CATEGORIES
+        assert get_instant_intent("my category") == Intent.LIST_CATEGORIES
+        assert get_instant_intent("list categories") == Intent.LIST_CATEGORIES
+
+    def test_delete_last(self):
+        assert get_instant_intent("delete last expense") == Intent.DELETE_EXPENSE
+        assert get_instant_intent("delete last") == Intent.DELETE_EXPENSE
+
+    def test_budget_check(self):
+        assert get_instant_intent("budget status") == Intent.CHECK_BUDGET
+        assert get_instant_intent("my budget") == Intent.CHECK_BUDGET
+        assert get_instant_intent("check budget") == Intent.CHECK_BUDGET
+
+    def test_set_budget(self):
+        assert get_instant_intent("set budget 10000") == Intent.SET_BUDGET
+        assert get_instant_intent("set budget 5000") == Intent.SET_BUDGET
+
+    def test_ambiguous_returns_none(self):
+        """Anything ambiguous must return None so the LLM handles it."""
+        assert get_instant_intent("500 food") is None
+        assert get_instant_intent("yes") is None
+        assert get_instant_intent("actually make it 600") is None
+        assert get_instant_intent("how much did I spend") is None
+        assert get_instant_intent("add category Gym") is None
+        assert get_instant_intent("Rahul paid me back") is None
+        assert get_instant_intent("split 1000 with 3 people") is None
+        # "set budget" without a number is ambiguous
+        assert get_instant_intent("set budget") is None
 
 
-def test_intent_detection():
-    """Test regex intent detection fallback."""
-    parser = TextParser()
-    
-    # Delete
-    assert parser.parse("delete last expense").intent == Intent.DELETE_EXPENSE
-    assert parser.parse("undo that").intent == Intent.DELETE_EXPENSE
-    
-    # Split
-    assert parser.parse("1000 dinner split with 4 people").intent == Intent.SPLIT_PAYMENT
-    assert parser.parse("divide 500 among 3").intent == Intent.SPLIT_PAYMENT
-    
-    # Category list/add
-    assert parser.parse("list my categories").intent == Intent.LIST_CATEGORIES
-    assert parser.parse("add category Shopping").intent == Intent.ADD_CATEGORY
-    
-    # Query
-    assert parser.parse("how much did I spend this week?").intent == Intent.QUERY_EXPENSES
-    assert parser.parse("show my expenses today").intent == Intent.QUERY_EXPENSES
-    
-    # Budget
-    assert parser.parse("set budget 10000").intent == Intent.SET_BUDGET
-    assert parser.parse("check my budget status").intent == Intent.CHECK_BUDGET
-    
-    # Export
-    assert parser.parse("export my expenses to csv").intent == Intent.EXPORT_EXPENSES
-    
-    # Edit
-    assert parser.parse("edit last expense to 400").intent == Intent.EDIT_EXPENSE
-    
-    # Help
-    assert parser.parse("help").intent == Intent.HELP
-    assert parser.parse("what can you do?").intent == Intent.UNKNOWN # Should hit UNKNOWN -> IntentClassifier LLM
-    
-    
-def test_complex_amounts():
-    """Test complex amount parsing."""
-    parser = TextParser()
-    
-    assert parser.parse("spent 1,500.50").amount == Decimal("1500.50")
-    assert parser.parse("paid 2.5k for food").amount == Decimal("2500")
-    assert parser.parse("10k rent").amount == Decimal("10000")
-    assert parser.parse("0.5k").amount == Decimal("500")
+# ── parse_amount ──────────────────────────────────────────────────────────────
+
+class TestParseAmount:
+    def test_plain_integer(self):
+        assert parse_amount("500 food") == Decimal("500")
+        assert parse_amount("1200") == Decimal("1200")
+
+    def test_k_shorthand(self):
+        assert parse_amount("2.5k rent") == Decimal("2500")
+        assert parse_amount("10k food") == Decimal("10000")
+        assert parse_amount("0.5k chai") == Decimal("500")
+        assert parse_amount("10K groceries") == Decimal("10000")
+
+    def test_currency_prefix(self):
+        assert parse_amount("₹850 uber") == Decimal("850")
+        assert parse_amount("$20 netflix") == Decimal("20")
+
+    def test_comma_formatted(self):
+        # Standard 3-digit grouping is handled by the regex
+        assert parse_amount("1,500 groceries") == Decimal("1500")
+        assert parse_amount("₹10,000 rent") == Decimal("10000")
+        # Indian 2-digit grouping (₹1,00,000) is intentionally left to the LLM
+
+    def test_decimal_amount(self):
+        assert parse_amount("49.99 subscription") == Decimal("49.99")
+
+    def test_no_amount(self):
+        assert parse_amount("help") is None
+        assert parse_amount("show categories") is None
+        assert parse_amount("yes") is None
+
+    def test_written_numbers_return_none(self):
+        """Written-out numbers are handled by the LLM, not the regex."""
+        assert parse_amount("five hundred rupees") is None
+
+
+# ── detect_currency ───────────────────────────────────────────────────────────
+
+class TestDetectCurrency:
+    def test_default_inr(self):
+        assert detect_currency("500 food") == "INR"
+
+    def test_rupee_symbol(self):
+        assert detect_currency("₹850 uber") == "INR"
+
+    def test_dollar(self):
+        assert detect_currency("$20 netflix") == "USD"
+        assert detect_currency("20 dollars") == "USD"
+
+    def test_euro(self):
+        assert detect_currency("€50 dinner") == "EUR"

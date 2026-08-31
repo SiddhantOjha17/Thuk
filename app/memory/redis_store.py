@@ -61,26 +61,30 @@ class RedisStore:
         r_key = f"thuk:flag:{phone}:{key}"
         await self.redis.delete(r_key)
 
+    # Atomic rate-limit Lua script: increments the counter and sets TTL in one
+    # round-trip. The SET NX EX ensures the expiry is only set on first touch.
+    _RATE_LIMIT_SCRIPT = """
+        local key = KEYS[1]
+        local window = tonumber(ARGV[1])
+        local limit = tonumber(ARGV[2])
+        local current = redis.call('INCR', key)
+        if current == 1 then
+            redis.call('EXPIRE', key, window)
+        end
+        return current
+    """
+
     async def check_rate_limit(self, phone: str, max_requests: int = 20, window_secs: int = 60) -> bool:
-        """Check if phone number has exceeded rate limit using standard inc + expire.
-        
-        Returns True if allowed, False if exceeded.
+        """Atomically check and increment rate limit counter.
+
+        Returns True if the request is allowed, False if the limit is exceeded.
+        Uses a Lua script so the INCR + EXPIRE is a single atomic operation.
         """
         key = f"thuk:rl:{phone}"
-        
-        async with self.redis.pipeline(transaction=True) as pipe:
-            pipe.incr(key)
-            pipe.ttl(key)
-            result = await pipe.execute()
-            
-        current_count = result[0]
-        ttl = result[1]
-        
-        if current_count == 1 or ttl < 0:
-            # First request in window, set expiry
-            await self.redis.expire(key, window_secs)
-            
-        return current_count <= max_requests
+        current = await self.redis.eval(
+            self._RATE_LIMIT_SCRIPT, 1, key, window_secs, max_requests
+        )
+        return int(current) <= max_requests
 
 # Global instance
 store = RedisStore()

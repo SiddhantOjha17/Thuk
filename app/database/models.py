@@ -40,7 +40,7 @@ class DebtDirection(str, Enum):
 
 
 class User(Base):
-    """User model - each WhatsApp user who interacts with the bot."""
+    """User model."""
 
     __tablename__ = "users"
 
@@ -49,15 +49,19 @@ class User(Base):
         primary_key=True,
         default=uuid.uuid4,
     )
-    phone_number: Mapped[str] = mapped_column(
-        String(20),
+    email: Mapped[str] = mapped_column(
+        String(255),
         unique=True,
         nullable=False,
         index=True,
     )
-    openai_api_key_encrypted: Mapped[str | None] = mapped_column(
+    password_hash: Mapped[str] = mapped_column(
         Text,
-        nullable=True,
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -85,9 +89,14 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
+        "RefreshToken",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self) -> str:
-        return f"<User(phone={self.phone_number})>"
+        return f"<User(email={self.email})>"
 
 
 class Category(Base):
@@ -110,8 +119,8 @@ class Category(Base):
         String(100),
         nullable=False,
     )
-    icon: Mapped[str | None] = mapped_column(
-        String(10),
+    color: Mapped[str | None] = mapped_column(
+        String(20),
         nullable=True,
     )
     is_default: Mapped[bool] = mapped_column(
@@ -305,3 +314,39 @@ class Debt(Base):
 
     def __repr__(self) -> str:
         return f"<Debt(person={self.person_name}, amount={self.amount}, direction={self.direction})>"
+
+
+class RefreshToken(Base):
+    """Stored refresh tokens for JWT auth."""
+
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token_hash: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        unique=True,
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+    )
+
+    user: Mapped["User"] = relationship("User", back_populates="refresh_tokens")
+
+    def __repr__(self) -> str:
+        return f"<RefreshToken(user_id={self.user_id})>"

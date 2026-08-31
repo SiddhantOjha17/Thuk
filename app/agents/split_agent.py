@@ -123,32 +123,28 @@ class SplitAgent:
         """
         summary = await crud.get_debt_summary(db, user.id)
 
-        if not summary["debts"]:
+        if not summary["aggregated"]:
             return "You have no pending debts!"
 
         response = ["*Debt Summary*\n"]
 
-        # Group by direction
-        owes_me = []
-        i_owe = []
-
-        for debt in summary["debts"]:
-            debt_str = f"- {debt.person_name}: {format_amount(debt.amount, debt.currency)}"
-            if debt.direction == DebtDirection.OWES_ME.value:
-                owes_me.append(debt_str)
-            else:
-                i_owe.append(debt_str)
+        owes_me = [p for p in summary["aggregated"] if p["direction"] == DebtDirection.OWES_ME.value]
+        i_owe = [p for p in summary["aggregated"] if p["direction"] != DebtDirection.OWES_ME.value]
 
         if owes_me:
-            total_owed = format_amount(summary["total_owed_to_me"], "INR")
-            response.append(f"*People owe you:* {total_owed}")
-            response.extend(owes_me)
+            total_str = format_amount(summary["total_owed_to_me"], "INR")
+            response.append(f"*People owe you* (total {total_str}):")
+            for p in owes_me:
+                count_label = f" ({p['count']} debts)" if p["count"] > 1 else ""
+                response.append(f"  \u2022 {p['person_name']}: {format_amount(p['total'], p['currency'])}{count_label}")
             response.append("")
 
         if i_owe:
-            total_i_owe = format_amount(summary["total_i_owe"], "INR")
-            response.append(f"*You owe:* {total_i_owe}")
-            response.extend(i_owe)
+            total_str = format_amount(summary["total_i_owe"], "INR")
+            response.append(f"*You owe* (total {total_str}):")
+            for p in i_owe:
+                count_label = f" ({p['count']} debts)" if p["count"] > 1 else ""
+                response.append(f"  \u2022 {p['person_name']}: {format_amount(p['total'], p['currency'])}{count_label}")
 
         return "\n".join(response)
 

@@ -46,7 +46,6 @@ class CategoryAgent:
         db: AsyncSession,
         user,
         name: str,
-        icon: str | None = None,
     ) -> str:
         """Add a new custom category.
 
@@ -68,7 +67,6 @@ class CategoryAgent:
             db=db,
             user_id=user.id,
             name=name.title(),
-            icon=icon,
         )
 
         return f"Added category: {category.name}"

@@ -1,8 +1,8 @@
-"""LangGraph workflow - main entry point for message processing."""
+"""LangGraph workflow — main entry point for message processing."""
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.supervisor import SupervisorAgent
+from app.agents.supervisor import SupervisorAgent, _agent_cache
 
 
 async def process_message(
@@ -13,7 +13,8 @@ async def process_message(
 ) -> str:
     """Process a user message through the agent system.
 
-    This is the main entry point for the multi-agent system.
+    Reuses a cached SupervisorAgent per user so the LangGraph workflow
+    is only compiled once per user session instead of on every message.
 
     Args:
         message: The user's message text
@@ -24,5 +25,10 @@ async def process_message(
     Returns:
         Response message to send back to the user
     """
-    supervisor = SupervisorAgent(user)
+    user_key = str(user.id)
+    supervisor = _agent_cache.get(user_key)
+    if supervisor is None:
+        supervisor = SupervisorAgent(user)
+        _agent_cache[user_key] = supervisor
+
     return await supervisor.process(message, db, source_type)

@@ -1,20 +1,25 @@
 """Image processor for extracting text from bank transaction screenshots."""
 
 import base64
+import json
 
 from openai import AsyncOpenAI
 
-from app.utils.encryption import decrypt_api_key
+from app.config import get_settings
+from app.utils.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class ImageProcessor:
     """Process images using OpenAI Vision API."""
 
-    def __init__(self, user):
-        """Initialize with user's API key."""
-        self.user = user
-        api_key = decrypt_api_key(user.openai_api_key_encrypted)
-        self.client = AsyncOpenAI(api_key=api_key)
+    def __init__(self, user=None):
+        """Initialize using the operator LLM (Gemini for images, OpenAI fallback)."""
+        # ImageProcessor still uses OpenAI vision as a direct client;
+        # Gemini vision is used via the LLMFactory in the agent layer.
+        settings = get_settings()
+        self.client = AsyncOpenAI(api_key=settings.openai_api_key)
 
     async def extract_text(self, image_data: bytes) -> str | None:
         """Extract transaction details from a bank SMS/transaction screenshot.
@@ -77,7 +82,7 @@ Be concise and include only the extracted information.""",
             return None
 
         except Exception as e:
-            print(f"Error extracting text from image: {e}")
+            logger.error("Error extracting text from image", error=str(e), exc_info=True)
             return None
 
     async def analyze_receipt(self, image_data: bytes) -> dict | None:
@@ -123,8 +128,6 @@ Return only valid JSON.""",
                 max_tokens=500,
             )
 
-            import json
-
             result = response.choices[0].message.content
             if result:
                 # Try to parse as JSON
@@ -135,5 +138,5 @@ Return only valid JSON.""",
             return None
 
         except Exception as e:
-            print(f"Error analyzing receipt: {e}")
+            logger.error("Error analyzing receipt", error=str(e), exc_info=True)
             return None

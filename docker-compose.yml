@@ -5,13 +5,18 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql+asyncpg://thuk:thuk@db:5432/thuk
-      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID}
-      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN}
-      - TWILIO_WHATSAPP_NUMBER=${TWILIO_WHATSAPP_NUMBER:-whatsapp:+14155238886}
+      - REDIS_URL=redis://redis:6379
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JWT_SECRET=${JWT_SECRET}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
-      - DEBUG=false
+      - WEBHOOK_BASE_URL=http://localhost:8000
+      - DEBUG=true
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: unless-stopped
 
@@ -27,6 +32,15 @@ services:
       test: ["CMD-SHELL", "pg_isready -U thuk"]
       interval: 5s
       timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
       retries: 5
     restart: unless-stopped
 

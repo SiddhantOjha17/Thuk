@@ -1,7 +1,7 @@
 """Database CRUD operations."""
 
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from sqlalchemy import and_, func, select
@@ -11,55 +11,81 @@ from sqlalchemy.orm import selectinload
 from app.database.models import Category, Debt, DebtDirection, Expense, Split, SourceType, User
 
 
-# ============== User Operations ==============
+# ============== User / Auth Operations ==============
 
 
-async def get_user_by_phone(db: AsyncSession, phone_number: str) -> User | None:
-    """Get user by phone number."""
-    result = await db.execute(select(User).where(User.phone_number == phone_number))
+async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
+    """Get user by email address."""
+    result = await db.execute(
+        select(User).where(func.lower(User.email) == email.lower())
+    )
     return result.scalar_one_or_none()
 
 
-async def create_user(db: AsyncSession, phone_number: str) -> User:
-    """Create a new user and initialize default categories."""
-    user = User(phone_number=phone_number)
+async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
+    """Get user by primary key."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    return result.scalar_one_or_none()
+
+
+async def create_user(db: AsyncSession, name: str, email: str, password_hash: str) -> User:
+    """Create a new user and seed default categories."""
+    user = User(name=name, email=email.lower(), password_hash=password_hash)
     db.add(user)
     await db.flush()
 
-    # Create default categories
     default_categories = [
-        ("Food", None),
-        ("Transport", None),
-        ("Shopping", None),
-        ("Bills", None),
-        ("Entertainment", None),
-        ("Health", None),
-        ("Other", None),
+        ("Food",          "#F97316"),
+        ("Transport",     "#38BDF8"),
+        ("Shopping",      "#A78BFA"),
+        ("Bills",         "#FBBF24"),
+        ("Entertainment", "#F472B6"),
+        ("Health",        "#34D399"),
+        ("Other",         "#9CA3AF"),
     ]
-
-    for name, icon in default_categories:
-        category = Category(
-            user_id=user.id,
-            name=name,
-            icon=icon,
-            is_default=True,
-        )
-        db.add(category)
+    for name_, color in default_categories:
+        db.add(Category(user_id=user.id, name=name_, color=color, is_default=True))
 
     await db.flush()
     return user
 
 
-async def update_user_api_key(
-    db: AsyncSession, user_id: uuid.UUID, encrypted_key: str
-) -> User | None:
-    """Update user's encrypted API key."""
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if user:
-        user.openai_api_key_encrypted = encrypted_key
+# ── Refresh tokens ────────────────────────────────────────────────────────────
+
+
+async def store_refresh_token(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    token_hash: str,
+    expires_at,
+) -> None:
+    from app.database.models import RefreshToken
+    db.add(RefreshToken(user_id=user_id, token_hash=token_hash, expires_at=expires_at))
+    await db.flush()
+
+
+async def get_refresh_token(db: AsyncSession, token_hash: str):
+    from app.database.models import RefreshToken
+    from datetime import UTC
+    now = datetime.now(UTC)
+    result = await db.execute(
+        select(RefreshToken).where(
+            RefreshToken.token_hash == token_hash,
+            RefreshToken.expires_at > now,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def revoke_refresh_token(db: AsyncSession, token_hash: str) -> None:
+    from app.database.models import RefreshToken
+    result = await db.execute(
+        select(RefreshToken).where(RefreshToken.token_hash == token_hash)
+    )
+    token = result.scalar_one_or_none()
+    if token:
+        await db.delete(token)
         await db.flush()
-    return user
 
 
 # ============== Category Operations ==============
@@ -92,13 +118,13 @@ async def create_category(
     db: AsyncSession,
     user_id: uuid.UUID,
     name: str,
-    icon: str | None = None,
+    color: str | None = None,
 ) -> Category:
     """Create a new category for a user."""
     category = Category(
         user_id=user_id,
         name=name,
-        icon=icon,
+        color=color,
         is_default=False,
     )
     db.add(category)
@@ -312,13 +338,27 @@ async def get_user_debts(
 
 
 async def get_debt_summary(db: AsyncSession, user_id: uuid.UUID) -> dict:
-    """Get debt summary for a user."""
+    """Get debt summary aggregated by person."""
     debts = await get_user_debts(db, user_id, settled=False)
 
     total_owed_to_me = Decimal("0")
     total_i_owe = Decimal("0")
 
+    # Aggregate per person: {name: {direction, total, currency, count}}
+    aggregated: dict[str, dict] = {}
     for debt in debts:
+        key = debt.person_name.lower()
+        if key not in aggregated:
+            aggregated[key] = {
+                "person_name": debt.person_name,
+                "direction": debt.direction,
+                "total": Decimal("0"),
+                "currency": debt.currency,
+                "count": 0,
+            }
+        aggregated[key]["total"] += debt.amount
+        aggregated[key]["count"] += 1
+
         if debt.direction == DebtDirection.OWES_ME.value:
             total_owed_to_me += debt.amount
         else:
@@ -327,7 +367,7 @@ async def get_debt_summary(db: AsyncSession, user_id: uuid.UUID) -> dict:
     return {
         "total_owed_to_me": total_owed_to_me,
         "total_i_owe": total_i_owe,
-        "debts": debts,
+        "aggregated": list(aggregated.values()),
     }
 
 

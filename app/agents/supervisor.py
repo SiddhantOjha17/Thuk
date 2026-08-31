@@ -1,13 +1,13 @@
 """Supervisor Agent - orchestrates the multi-agent system using LangGraph."""
 
 import asyncio
+import re
+import weakref
 from typing import Annotated, Literal
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
-from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing_extensions import TypedDict
 
@@ -19,12 +19,25 @@ from app.agents.text2sql_agent import Text2SQLAgent
 from app.agents.export_agent import ExportAgent
 from app.agents.intent_classifier import IntentClassifier
 from app.memory.redis_store import store
-from app.processors.text_parser import Intent, ParsedMessage, TextParser
-from app.utils.encryption import decrypt_api_key
+from app.processors.text_parser import Intent, ParsedMessage, get_instant_intent
 from app.utils.logging import get_logger
-from app.whatsapp.handlers import get_help_message
 
 logger = get_logger(__name__)
+
+
+def _help_message() -> str:
+    return (
+        "What I can do:\n"
+        "\n"
+        "Add expenses: \"500 food\", \"paid 1200 for dinner\"\n"
+        "Split: \"1500 dinner split with Rahul and Priya\"\n"
+        "Query: \"how much did I spend this week?\"\n"
+        "Edit: \"change last expense to 600\"\n"
+        "Delete: \"delete last expense\"\n"
+        "Budget: \"set budget 10000\", \"check my budget\"\n"
+        "Debts: \"who owes me?\", \"Rahul paid me back\"\n"
+        "Export: \"export my expenses\""
+    )
 
 
 class AgentState(TypedDict):
@@ -39,43 +52,50 @@ class AgentState(TypedDict):
     source_type: str
 
 
+# Cache compiled SupervisorAgent instances per user UUID.
+# WeakValueDictionary means entries are garbage-collected when no other
+# reference to the agent exists, so memory doesn't grow unboundedly.
+_agent_cache: weakref.WeakValueDictionary = weakref.WeakValueDictionary()
+
+
 class SupervisorAgent:
     """Main orchestrator that routes messages to appropriate agents."""
 
     def __init__(self, user):
-        """Initialize with user's API key."""
         self.user = user
-        api_key = decrypt_api_key(user.openai_api_key_encrypted)
-        self.llm = ChatOpenAI(
-            api_key=api_key,
-            model="gpt-4o-mini",
-            temperature=0,
-        )
         self.expense_agent = ExpenseAgent()
         self.query_agent = Text2SQLAgent(user)
         self.split_agent = SplitAgent()
         self.category_agent = CategoryAgent()
         self.budget_agent = BudgetAgent()
         self.export_agent = ExportAgent()
-        
-        # Intent Router fallback
-        self.intent_classifier = IntentClassifier(user)
-        
-        # Compile workflow once per agent instance
+        self.intent_classifier = IntentClassifier()
+        # Compile LangGraph workflow once and reuse for this user
         self.app = self.build_graph().compile()
 
     async def route_message(self, state: AgentState) -> AgentState:
-        """Parse message and determine routing using LLM logic."""
-        # Intercept category resolution flow (stateful manual override)
-        is_pending_expense = await store.get_flag(self.user.phone_number, "pending_expense")
-        if is_pending_expense:
-            state["parsed"] = ParsedMessage(intent=Intent.RESOLVE_CATEGORY, raw_text=state["user_message"])
+        """Parse message and determine routing."""
+        msg = state["user_message"]
+
+        # 1. Intercept pending category resolution — user is picking a category
+        if await store.get_flag(str(self.user.id), "pending_expense"):
+            state["parsed"] = ParsedMessage(intent=Intent.RESOLVE_CATEGORY, raw_text=msg)
             return state
 
-        # Fully LLM-driven Intent Parsing for everything else
-        history = await store.get_history(self.user.phone_number, limit=6)
-        parsed = await self.intent_classifier.classify(state["user_message"], history)
-            
+        # 2. Intercept pending delete confirmation — user replied yes/no to "are you sure?"
+        if await store.get_flag(str(self.user.id), "pending_delete"):
+            state["parsed"] = ParsedMessage(intent=Intent.DELETE_EXPENSE, raw_text=msg)
+            return state
+
+        # 3. Instant fast-path for unambiguous commands — no LLM call
+        instant = get_instant_intent(msg)
+        if instant is not None:
+            state["parsed"] = ParsedMessage(intent=instant, raw_text=msg)
+            return state
+
+        # 4. LLM-driven classification for everything else
+        history = await store.get_history(str(self.user.id), limit=6)
+        parsed = await self.intent_classifier.classify(msg, history)
         state["parsed"] = parsed
         return state
 
@@ -89,6 +109,7 @@ class SupervisorAgent:
         routing = {
             Intent.ADD_EXPENSE: "expense",
             Intent.DELETE_EXPENSE: "expense_delete",
+            Intent.EDIT_EXPENSE: "expense_edit",
             Intent.QUERY_EXPENSES: "query",
             Intent.SPLIT_PAYMENT: "split",
             Intent.CHECK_DEBTS: "debts",
@@ -96,8 +117,6 @@ class SupervisorAgent:
             Intent.ADD_CATEGORY: "category_add",
             Intent.LIST_CATEGORIES: "category_list",
             Intent.RESOLVE_CATEGORY: "expense_resolve",
-            Intent.DELETE_EXPENSE: "expense_delete",
-            Intent.EDIT_EXPENSE: "expense_edit",
             Intent.SET_BUDGET: "budget_set",
             Intent.CHECK_BUDGET: "budget_check",
             Intent.EXPORT_EXPENSES: "export",
@@ -111,7 +130,7 @@ class SupervisorAgent:
     async def handle_expense(self, state: AgentState) -> AgentState:
         """Handle expense addition."""
         # We need history for contextual category detection
-        history_dicts = await store.get_history(self.user.phone_number, limit=6)
+        history_dicts = await store.get_history(str(self.user.id), limit=6)
         
         response = await self.expense_agent.add_expense(
             db=state["db"],
@@ -193,12 +212,12 @@ class SupervisorAgent:
 
     async def handle_export(self, state: AgentState) -> AgentState:
         """Handle CSV export."""
-        # For simplicity in graph, we use a generic request URL, this can be improved
-        # or we just rely on the fallback webhook base_url setting.
+        from app.config import get_settings
+        settings = get_settings()
         response = await self.export_agent.export_and_get_url(
             db=state["db"],
             user=state["user"],
-            request_base_url="https://thuk.fly.dev" # fallback
+            request_base_url=settings.webhook_base_url,
         )
         state["response"] = response
         return state
@@ -271,7 +290,7 @@ class SupervisorAgent:
 
     async def handle_help(self, state: AgentState) -> AgentState:
         """Handle help request."""
-        state["response"] = get_help_message()
+        state["response"] = _help_message()
         return state
 
     async def handle_clarify(self, state: AgentState) -> AgentState:
@@ -283,12 +302,10 @@ class SupervisorAgent:
     async def handle_llm_fallback(self, state: AgentState) -> AgentState:
         """Last resort - try to handle as expense, or give a minimal help message."""
         msg = state["user_message"]
-        
-        # Check if there's any number in the message - if so, try to route to expense
-        import re
+
         if re.search(r'\d+', msg):
             # Has a number, probably an expense - try expense handler
-            history = await store.get_history(self.user.phone_number, limit=6)
+            history = await store.get_history(str(self.user.id), limit=6)
             reclassified = await self.intent_classifier.classify(
                 f"ADD_EXPENSE OVERRIDE: The user wants to add this expense: {msg}", history
             )
@@ -382,7 +399,7 @@ class SupervisorAgent:
             Response message
         """
         # Load history
-        history_dicts = await store.get_history(self.user.phone_number, limit=6)
+        history_dicts = await store.get_history(str(self.user.id), limit=6)
         messages = []
         for msg in history_dicts:
             if msg["role"] == "user":
@@ -407,8 +424,8 @@ class SupervisorAgent:
             response_text = result["response"]
             
             # Save messages on success
-            await store.add_message(self.user.phone_number, "user", message)
-            await store.add_message(self.user.phone_number, "assistant", response_text)
+            await store.add_message(str(self.user.id), "user", message)
+            await store.add_message(str(self.user.id), "assistant", response_text)
             
             return response_text
         except asyncio.TimeoutError:

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0"
+          toolsVersion="21701" targetRuntime="AppleCocoa" propertyAccessControl="none"
+          useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES"
+          colorMatched="YES" initialViewController="rnq-G4-Tpf">
+    <scenes>
+        <scene sceneID="ceB-UR-FPm">
+            <objects>
+                <viewController id="rnq-G4-Tpf"
+                    customClass="ShareViewController"
+                    customModuleProvider="target"
+                    sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="0qT-uv-QZT">
+                        <rect key="frame" x="0.0" y="0.0" width="390" height="844"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <color key="backgroundColor" systemColor="systemBackgroundColor"/>
+                    </view>
+                </viewController>
+            </objects>
+        </scene>
+    </scenes>
+</document>

@@ -17,12 +17,18 @@ class Settings(BaseSettings):
     # Database (Render provides postgresql://, we need to convert to asyncpg)
     database_url: str = "postgresql+asyncpg://user:password@localhost:5432/thuk"
 
-    # Twilio WhatsApp
-    twilio_account_sid: str = ""
-    twilio_auth_token: str = ""
-    twilio_whatsapp_number: str = "whatsapp:+14155238886"
+    # LLM providers (operator-level keys)
+    groq_api_key: str = ""
+    gemini_api_key: str = ""
+    openai_api_key: str = ""  # Emergency fallback only
 
-    # Encryption key for user API keys
+    # Database SSL — set True for Supabase / any hosted PostgreSQL, False for local
+    db_ssl: bool = False
+
+    # Auth
+    jwt_secret: str = "change-me-in-production"
+
+    # Encryption (kept for any future field-level encryption needs)
     encryption_key: str = ""
 
     # Redis URL

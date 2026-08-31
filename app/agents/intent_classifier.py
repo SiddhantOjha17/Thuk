@@ -1,14 +1,14 @@
 """LLM-based intent classifier for robust natural language parsing."""
 
 from datetime import date
+from decimal import Decimal
 from typing import Any
 
 from langchain_core.messages import SystemMessage, HumanMessage
-from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 
+from app.llm.factory import get_llm, ModelTask
 from app.processors.text_parser import Intent, ParsedMessage
-from app.utils.encryption import decrypt_api_key
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -58,79 +58,111 @@ class IntentClassificationResult(BaseModel):
 class IntentClassifier:
     """Uses LLM to robustly classify intents from natural language."""
 
-    def __init__(self, user):
-        """Initialize with user's specific API key."""
-        self.user = user
-        api_key = decrypt_api_key(user.openai_api_key_encrypted)
-        # We use a cheap, fast model for intent routing
-        self.llm = ChatOpenAI(
-            api_key=api_key,
-            model="gpt-4o-mini",
-            temperature=0,
-        ).with_structured_output(IntentClassificationResult)
+    def __init__(self):
+        """Initialize using the operator-level LLM factory."""
+        from app.llm.factory import get_llm, ModelTask
+        # Fast 8B model is plenty for intent routing
+        self.llm = get_llm(ModelTask.FAST).with_structured_output(IntentClassificationResult)
 
     async def classify(self, text: str, history: list[dict[str, Any]] | None = None) -> ParsedMessage:
         """Classify the intent using an LLM.
-        
+
         Args:
             text: The user's message text
             history: Optional conversation history for context
-            
+
         Returns:
             ParsedMessage with all extracted fields
         """
+        from app.utils.currency import parse_amount, detect_currency
+
         today = date.today().isoformat()
-        system_prompt = f"""You are Thuk's Intent Classification Engine. Your job is to classify user messages for a personal expense tracker.
+
+        # Pre-extract amount with the fast regex utility and pass it as a hint
+        # so the LLM doesn't have to guess numeric values from text
+        pre_amount = parse_amount(text)
+        pre_currency = detect_currency(text)
+        hint = ""
+        if pre_amount is not None:
+            hint = f"\n\nPRE-EXTRACTED HINT: The message appears to contain amount {pre_amount} {pre_currency}. Use this if it matches context."
+
+        # Cap input length to prevent runaway prompts
+        safe_text = text[:1500]
+
+        system_prompt = f"""You are Thuk's Intent Classification Engine for a WhatsApp expense tracker.
 
 Current Date: {today}
 
-CRITICAL RULE: When in doubt, assume ADD_EXPENSE. Users message this bot to track spending. Short messages like "297 groceries", "500 food", "paid 100 for lunch" are ALWAYS ADD_EXPENSE. Never ask for clarification on something that is clearly an expense.
+CRITICAL DEFAULT RULE: When in doubt, classify as ADD_EXPENSE. Users open this bot to log spending.
+Short messages like "297 groceries", "500 food", "paid 100 for lunch", "chai 30" are ALWAYS ADD_EXPENSE.
+Do NOT ask for clarification on anything that looks like a spend.
+
+HINGLISH & NATURAL LANGUAGE SUPPORT — these are all ADD_EXPENSE:
+- "500 ka khana" (500 for food)
+- "aaj 200 auto mein gaya" (today 200 spent on auto)
+- "bhai 1200 diye dinner ke liye" (gave 1200 for dinner)
+- "five hundred rupees for coffee" (written-out number, amount=500)
+- "spent two thousand on groceries" (amount=2000)
 
 ROUTING RULES:
-- If there is ANY amount + ANY item/place/person mentioned → ADD_EXPENSE
-- If it asks "how much", "show", "summary", "spent" as a question → QUERY_EXPENSES  
-- If it mentions "split" or "divide" or "among" → SPLIT_PAYMENT
-- If it mentions editing/changing/correcting a past entry → EDIT_EXPENSE
-- If it asks "who owes" or "debts" → CHECK_DEBTS
-- If it says someone "paid back" → SETTLE_DEBT
-- If it asks to "add a category" → ADD_CATEGORY
-- If it asks to "show categories" → LIST_CATEGORIES
-- If it asks to delete → DELETE_EXPENSE
-- If it mentions setting/checking a budget → SET_BUDGET / CHECK_BUDGET
-- If it says export/download/CSV → EXPORT_EXPENSES
-- If it asks for help or commands → HELP
-- CLARIFY: Use ONLY when there is NO amount whatsoever and intent is completely unclear
-- UNKNOWN: ONLY for messages clearly unrelated to money/expenses (greetings with no context, random text)
+- amount + item/place/person → ADD_EXPENSE
+- "split", "divide", "among", "between X and Y" with amount → SPLIT_PAYMENT
+- "how much", "show", "what did I spend", "summary" (as question) → QUERY_EXPENSES
+- "change", "edit", "update", "actually make it", "correct" referring to a past expense → EDIT_EXPENSE
+- "who owes", "debts", "owes me" → CHECK_DEBTS
+- "[name] paid me back", "settled", "received from" → SETTLE_DEBT
+- "add category [name]" → ADD_CATEGORY
+- "delete", "remove", "undo" → DELETE_EXPENSE
+- "set budget [amount]" → SET_BUDGET
+- "check budget", "budget status" → CHECK_BUDGET
+- "export", "download", "CSV" → EXPORT_EXPENSES
+- "help" → HELP
+- CLARIFY: ONLY if there is truly NO amount and intent is completely unclear
+- UNKNOWN: ONLY for obvious non-expense chatter (e.g. "What's the weather?")
 
-SUPPORTED INTENTS: ADD_EXPENSE, QUERY_EXPENSES, EDIT_EXPENSE, SPLIT_PAYMENT, CHECK_DEBTS, SETTLE_DEBT, ADD_CATEGORY, LIST_CATEGORIES, DELETE_EXPENSE, SET_BUDGET, CHECK_BUDGET, EXPORT_EXPENSES, HELP, CLARIFY, UNKNOWN
+CONTEXTUAL REPLIES — use conversation history:
+- "yes" after "are you sure you want to delete?" → DELETE_EXPENSE
+- "no" / "cancel" after any confirmation → UNKNOWN (let it fall through gracefully)
+- "actually make it 600" after adding an expense → EDIT_EXPENSE
+- A number like "3" or a word like "food" after a category-selection prompt → RESOLVE_CATEGORY
 
-IMPORTANT: If a message comes from a bank screenshot or payment app (e.g. starts with "From bank transaction"), treat the extracted amount and merchant as an ADD_EXPENSE. Extract the amount and merchant name as the description.
+FOR BANK SCREENSHOTS (message starts with "[From bank transaction screenshot]"):
+- Always ADD_EXPENSE. Extract the merchant/description and amount.
 
-Use conversation history to understand context for replies like "yes", "delete that", "change it"."""
+FOR AMOUNTS:
+- Parse written numbers: "five hundred" → 500, "two thousand" → 2000
+- k-suffix already handled: use the PRE-EXTRACTED HINT if present
+- Default currency: INR
+
+SUPPORTED INTENTS: ADD_EXPENSE, QUERY_EXPENSES, EDIT_EXPENSE, SPLIT_PAYMENT, CHECK_DEBTS,
+SETTLE_DEBT, ADD_CATEGORY, LIST_CATEGORIES, DELETE_EXPENSE, SET_BUDGET, CHECK_BUDGET,
+EXPORT_EXPENSES, RESOLVE_CATEGORY, HELP, CLARIFY, UNKNOWN"""
 
         messages = [SystemMessage(content=system_prompt)]
-        
-        if history:
-            transcript = []
-            for msg in history:
-                role = "User" if msg["role"] == "user" else "Assistant"
-                transcript.append(f"{role}: {msg['content']}")
-            
-            transcript_str = "\n".join(transcript)
-            messages.append(SystemMessage(content=f"--- CONVERSATIONAL MEMORY ---\n{transcript_str}\n--- END MEMORY ---"))
 
-        messages.append(HumanMessage(content=text))
+        if history:
+            transcript = "\n".join(
+                f"{'User' if m['role'] == 'user' else 'Assistant'}: {m['content']}"
+                for m in history
+            )
+            messages.append(SystemMessage(content=f"--- CONVERSATION HISTORY ---\n{transcript}\n--- END HISTORY ---"))
+
+        messages.append(HumanMessage(content=safe_text + hint))
 
         try:
             result: IntentClassificationResult = await self.llm.ainvoke(messages)
-            
-            # Map the structured output to our internal ParsedMessage dataclass
+
+            # Prefer LLM-extracted amount; fall back to pre-extracted regex amount
+            llm_amount = Decimal(str(result.amount)) if result.amount is not None else None
+            final_amount = llm_amount if llm_amount is not None else pre_amount
+            final_currency = result.currency if result.currency else pre_currency
+
             return ParsedMessage(
                 intent=result.intent,
-                amount=Decimal(str(result.amount)) if result.amount is not None else None,
-                currency=result.currency,
+                amount=final_amount,
+                currency=final_currency,
                 description=result.description,
-                category_hint=None, # LLM doesn't do category_hint here, it's done by CategoryAgent
+                category_hint=None,
                 expense_date=result.expense_date,
                 split_count=result.split_count,
                 split_people=result.split_people,
@@ -142,5 +174,4 @@ Use conversation history to understand context for replies like "yes", "delete t
             )
         except Exception as e:
             logger.error("LLM intent classification failed", error=str(e), exc_info=True)
-            # Safe fallback
             return ParsedMessage(intent=Intent.UNKNOWN, raw_text=text)

@@ -31,18 +31,21 @@ CURRENCY_SYMBOLS: dict[str, str] = {
     "dirham": "AED",
 }
 
-# Regex patterns for amount extraction
+# Number with optional k/K suffix (e.g. 2.5k, 10K)
+_NUM = r"(\d+(?:,\d{3})*(?:\.\d{1,2})?)([kK])?"
+
+# Regex patterns for amount extraction — each group 1 is the digits, group 2 is the k suffix
 AMOUNT_PATTERNS = [
-    # ₹500, $100, €50, £30
-    r"[₹$€£¥]\s*(\d+(?:,\d{3})*(?:\.\d{1,2})?)",
-    # 500₹, 100$
-    r"(\d+(?:,\d{3})*(?:\.\d{1,2})?)\s*[₹$€£¥]",
-    # Rs 500, Rs. 500, INR 500
-    r"(?:rs\.?|inr|usd|eur|gbp|aed)\s*(\d+(?:,\d{3})*(?:\.\d{1,2})?)",
-    # 500 Rs, 500 rupees
-    r"(\d+(?:,\d{3})*(?:\.\d{1,2})?)\s*(?:rs\.?|rupees?|dollars?|euros?|pounds?|dirhams?)",
-    # Just numbers (fallback)
-    r"(\d+(?:,\d{3})*(?:\.\d{1,2})?)",
+    # ₹500, ₹2.5k, $100k
+    r"[₹$€£¥]\s*" + _NUM,
+    # 500₹, 2.5k$
+    _NUM + r"\s*[₹$€£¥]",
+    # Rs 500, Rs. 2k, INR 500
+    r"(?:rs\.?|inr|usd|eur|gbp|aed)\s*" + _NUM,
+    # 500 Rs, 2.5k rupees
+    _NUM + r"\s*(?:rs\.?|rupees?|dollars?|euros?|pounds?|dirhams?)",
+    # Plain number with optional k: 500, 2.5k, 10K
+    _NUM,
 ]
 
 
@@ -50,30 +53,34 @@ def detect_currency(text: str) -> str:
     """Detect currency from text, defaults to INR."""
     text_lower = text.lower()
 
-    # Check for currency symbols first
+    # Check for currency symbols first (single-char, no word boundary needed)
     for symbol in ["₹", "$", "€", "£", "¥"]:
         if symbol in text:
             return CURRENCY_SYMBOLS[symbol]
 
-    # Check for currency words
+    # Check for currency words using whole-word matching to avoid false positives
+    # e.g. "rs" must not match inside "dollars"
     for word, code in CURRENCY_SYMBOLS.items():
-        if word in text_lower:
+        if len(word) <= 1:
+            continue  # symbols already handled above
+        if re.search(r"\b" + re.escape(word) + r"\b", text_lower):
             return code
 
-    # Default to INR
     return "INR"
 
 
 def parse_amount(text: str) -> Decimal | None:
-    """Extract amount from text."""
+    """Extract amount from text, handling k/K shorthand (e.g. 2.5k → 2500)."""
     for pattern in AMOUNT_PATTERNS:
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
-            amount_str = match.group(1)
-            # Remove commas
-            amount_str = amount_str.replace(",", "")
+            amount_str = match.group(1).replace(",", "")
+            suffix = match.group(2) if match.lastindex and match.lastindex >= 2 else None
             try:
-                return Decimal(amount_str)
+                value = Decimal(amount_str)
+                if suffix and suffix.lower() == "k":
+                    value *= 1000
+                return value
             except InvalidOperation:
                 continue
     return None

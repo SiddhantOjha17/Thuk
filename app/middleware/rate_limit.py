@@ -1,31 +1,25 @@
-"""Rate limiting dependency for webhooks."""
+"""Rate limiting dependency for API endpoints."""
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, HTTPException, Request, status
 
+from app.auth.dependencies import get_current_user
+from app.database.models import User
 from app.memory.redis_store import store
 
 
-async def check_rate_limit(request: Request) -> None:
-    """Check if the phone number has exceeded the rate limit.
-    
-    Extracts phone number from Twilio form data.
+async def check_rate_limit(
+    request: Request,
+    user: User = Depends(get_current_user),
+) -> None:
+    """Limit each authenticated user to 60 requests per minute.
+
+    Uses the user's UUID so it works regardless of IP or token rotation.
     """
-    form_data = await request.form()
-    phone_number = form_data.get("From", "").replace("whatsapp:", "")
-    
-    if not phone_number:
-        return  # Can't rate limit without a phone number
-        
-    # Limit: 20 requests per 60 seconds
-    is_allowed = await store.check_rate_limit(phone_number, max_requests=20, window_secs=60)
-    
-    if not is_allowed:
-        # We don't raise HTTPException because Twilio will just retry 429s or error out.
-        # Instead, we just drop the request or send a quick XML response back
-        # But for FastAPI dependency, raising HTTPException is standard. Let's do that,
-        # or we can attach it to the request and let the handler decide.
-        # Given the requirements, a HTTP 429 is appropriate. 
+    allowed = await store.check_rate_limit(
+        str(user.id), max_requests=60, window_secs=60
+    )
+    if not allowed:
         raise HTTPException(
-            status_code=429,
-            detail="Too many requests. Please wait a minute before sending more messages."
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many requests. Please slow down.",
         )

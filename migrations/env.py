@@ -40,9 +40,11 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode with sync engine."""
+    connect_args = {"sslmode": "require"} if settings.db_ssl else {}
     connectable = create_engine(
         settings.sync_database_url,
         poolclass=pool.NullPool,
+        connect_args=connect_args,
     )
 
     with connectable.connect() as connection:

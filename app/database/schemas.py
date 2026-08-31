@@ -1,210 +1,173 @@
-"""Pydantic schemas for request/response validation."""
+"""Pydantic schemas for API request/response validation."""
 
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
-# ============== User Schemas ==============
+# ── Auth ──────────────────────────────────────────────────────────────────────
 
 
-class UserBase(BaseModel):
-    """Base user schema."""
-
-    phone_number: str
-
-
-class UserCreate(UserBase):
-    """Schema for creating a user."""
-
-    pass
+class RegisterRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    email: EmailStr
+    password: str = Field(min_length=8)
 
 
-class UserResponse(UserBase):
-    """Schema for user response."""
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
 
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+
+
+# ── User ──────────────────────────────────────────────────────────────────────
+
+
+class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    created_at: datetime
-    has_api_key: bool = False
-
-    @classmethod
-    def from_orm_with_key_check(cls, user) -> "UserResponse":
-        """Create response with API key check."""
-        return cls(
-            id=user.id,
-            phone_number=user.phone_number,
-            created_at=user.created_at,
-            has_api_key=user.openai_api_key_encrypted is not None,
-        )
-
-
-# ============== Category Schemas ==============
-
-
-class CategoryBase(BaseModel):
-    """Base category schema."""
-
     name: str
-    icon: str | None = None
+    email: str
+    created_at: datetime
 
 
-class CategoryCreate(CategoryBase):
-    """Schema for creating a category."""
-
-    is_default: bool = False
+# ── Category ──────────────────────────────────────────────────────────────────
 
 
-class CategoryResponse(CategoryBase):
-    """Schema for category response."""
+class CategoryCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    color: str | None = None  # hex color, e.g. "#F97316"
 
+
+class CategoryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    name: str
+    color: str | None
     is_default: bool
 
 
-# ============== Expense Schemas ==============
+# ── Expense ───────────────────────────────────────────────────────────────────
 
 
-class ExpenseBase(BaseModel):
-    """Base expense schema."""
-
+class ExpenseCreate(BaseModel):
     amount: Decimal = Field(gt=0)
-    currency: str = "INR"
+    currency: str = Field(default="INR", max_length=3)
     description: str | None = None
+    category_id: uuid.UUID | None = None
     expense_date: date | None = None
 
 
-class ExpenseCreate(ExpenseBase):
-    """Schema for creating an expense."""
-
+class ExpenseUpdate(BaseModel):
+    amount: Decimal | None = Field(default=None, gt=0)
+    currency: str | None = Field(default=None, max_length=3)
+    description: str | None = None
     category_id: uuid.UUID | None = None
-    source_type: str = "text"
+    expense_date: date | None = None
 
 
-class ExpenseResponse(ExpenseBase):
-    """Schema for expense response."""
-
+class ExpenseResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
+    amount: Decimal
+    currency: str
+    description: str | None
     category_id: uuid.UUID | None
     source_type: str
+    expense_date: date
     created_at: datetime
-
-
-class ExpenseWithCategory(ExpenseResponse):
-    """Expense with category details."""
-
     category: CategoryResponse | None = None
 
 
-# ============== Split Schemas ==============
+# ── Budget ────────────────────────────────────────────────────────────────────
 
 
-class SplitBase(BaseModel):
-    """Base split schema."""
-
-    total_people: int = Field(gt=1)
-    user_paid: Decimal = Field(ge=0)
-
-
-class SplitCreate(SplitBase):
-    """Schema for creating a split."""
-
-    expense_id: uuid.UUID
-
-
-class SplitResponse(SplitBase):
-    """Schema for split response."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    expense_id: uuid.UUID
-    per_person_amount: Decimal
-    user_share: Decimal
-
-
-# ============== Debt Schemas ==============
-
-
-class DebtBase(BaseModel):
-    """Base debt schema."""
-
-    person_name: str
+class BudgetUpdate(BaseModel):
     amount: Decimal = Field(gt=0)
-    currency: str = "INR"
-    direction: str  # "owes_me" or "i_owe"
+    currency: str = Field(default="INR", max_length=3)
 
 
-class DebtCreate(DebtBase):
-    """Schema for creating a debt."""
+class BudgetResponse(BaseModel):
+    amount: Decimal | None
+    currency: str
+    spent: Decimal
+    remaining: Decimal | None
+    percent_used: float | None
 
-    related_expense_id: uuid.UUID | None = None
+
+# ── Debt ──────────────────────────────────────────────────────────────────────
 
 
-class DebtResponse(DebtBase):
-    """Schema for debt response."""
-
+class DebtResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    is_settled: bool
-    created_at: datetime
+    person_name: str
+    total: Decimal
+    currency: str
+    direction: str   # "owes_me" | "i_owe"
+    count: int       # number of unsettled debt records aggregated
+    is_settled: bool = False
 
 
-class DebtSummary(BaseModel):
-    """Summary of debts for a user."""
-
-    total_owed_to_me: Decimal = Decimal("0")
-    total_i_owe: Decimal = Decimal("0")
-    debts: list[DebtResponse] = []
+class DebtSummaryResponse(BaseModel):
+    total_owed_to_me: Decimal
+    total_i_owe: Decimal
+    debts: list[DebtResponse]
 
 
-# ============== Query Schemas ==============
+# ── Analytics ─────────────────────────────────────────────────────────────────
 
 
-class ExpenseQuery(BaseModel):
-    """Schema for querying expenses."""
-
-    start_date: date | None = None
-    end_date: date | None = None
-    category_id: uuid.UUID | None = None
-    currency: str | None = None
+class CategoryAmount(BaseModel):
+    category_name: str
+    amount: Decimal
+    color: str | None = None
 
 
-class ExpenseSummary(BaseModel):
-    """Summary of expenses for a time period."""
-
-    total_amount: Decimal = Decimal("0")
-    currency: str = "INR"
-    count: int = 0
-    by_category: dict[str, Decimal] = {}
-    start_date: date | None = None
-    end_date: date | None = None
+class AnalyticsSummary(BaseModel):
+    total: Decimal
+    currency: str
+    count: int
+    by_category: list[CategoryAmount]
+    start_date: date
+    end_date: date
 
 
-# ============== Message Schemas ==============
+class DailyAmount(BaseModel):
+    date: date
+    amount: Decimal
 
 
-class WhatsAppMessage(BaseModel):
-    """Incoming WhatsApp message."""
-
-    from_number: str
-    body: str | None = None
-    media_url: str | None = None
-    media_content_type: str | None = None
-    num_media: int = 0
+class AnalyticsDaily(BaseModel):
+    currency: str
+    days: list[DailyAmount]
+    start_date: date
+    end_date: date
 
 
-class AgentResponse(BaseModel):
-    """Response from the agent system."""
+# ── Chat ──────────────────────────────────────────────────────────────────────
 
-    message: str
+
+class ChatMessageRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=1500)
+
+
+class ChatResponse(BaseModel):
+    response: str
+    # Optional: populated when chat results in an expense being created/edited
     expense_id: uuid.UUID | None = None
-    action_taken: str | None = None

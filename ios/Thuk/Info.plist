@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Thuk uses the microphone to let you record voice notes describing expenses.</string>
+
+    <key>NSCameraUsageDescription</key>
+    <string>Thuk uses the camera to let you photograph receipts and bank transaction screenshots.</string>
+
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Thuk reads photos so you can share bank transaction screenshots for expense tracking.</string>
+
+    <key>UILaunchScreen</key>
+    <dict/>
+</dict>
+</plist>

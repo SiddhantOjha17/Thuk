@@ -3,38 +3,34 @@
 from datetime import date
 from typing import Any
 
+import re
+
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.utils.encryption import decrypt_api_key
+from app.llm.factory import get_llm, get_response_llm, ModelTask
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+# SQL keywords that must never appear in generated queries
+_BLOCKED_SQL = re.compile(
+    r"\b(insert|update|delete|drop|alter|truncate|grant|revoke|create|replace)\b",
+    re.IGNORECASE,
+)
 
 
 class Text2SQLAgent:
     """Agent for translating natural language queries into secure SQL."""
 
     def __init__(self, user):
-        """Initialize with user's specific API key."""
         self.user = user
-        api_key = decrypt_api_key(user.openai_api_key_encrypted)
-        
-        # Fast, cheap model is perfect for SQL generation
-        self.sql_llm = ChatOpenAI(
-            api_key=api_key,
-            model="gpt-4o-mini",
-            temperature=0,
-        )
-        
-        # Same model for response generation
-        self.response_llm = ChatOpenAI(
-            api_key=api_key,
-            model="gpt-4o-mini",
-            temperature=0.7,
-        )
+        # 70B for SQL generation — needs strong reasoning
+        self.sql_llm = get_llm(ModelTask.SMART)
+        # Warmer model for friendly response phrasing
+        self.response_llm = get_response_llm()
 
     async def _generate_sql(self, query: str) -> str:
         """Use LLM to generate PostgreSQL query."""
@@ -86,10 +82,13 @@ CRITICAL RULES:
             # 1. Generate SQL
             sql_query = await self._generate_sql(natural_query)
             
-            # Security Sanity Check (Very basic guardrail)
+            # Security: only SELECT is allowed; block any destructive keywords
             if not sql_query.lower().lstrip().startswith("select"):
-                logger.warning(f"Prevented non-select query: {sql_query}")
-                return "I can only perform safe analytics queries. The generated query was invalid."
+                logger.warning("Prevented non-SELECT query", sql=sql_query)
+                return "I can only perform safe read-only queries."
+            if _BLOCKED_SQL.search(sql_query):
+                logger.warning("Blocked dangerous SQL keyword", sql=sql_query)
+                return "I can only perform safe read-only queries."
 
             # 2. Execute SQL securely with mapped parameter
             stmt = text(sql_query)

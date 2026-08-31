@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from fastapi import Request
 
 from app.database.models import Expense, User
@@ -23,9 +24,10 @@ class ExportAgent:
         Since Twilio needs a public URL for media attachments, we store the CSV in Redis
         temporarily and return a URL that our FastAPI app will serve.
         """
-        # Fetch all expenses
+        # Fetch all expenses with category names
         stmt = (
             select(Expense)
+            .options(selectinload(Expense.category))
             .where(Expense.user_id == user.id)
             .order_by(Expense.expense_date.desc(), Expense.created_at.desc())
         )
@@ -41,15 +43,12 @@ class ExportAgent:
         writer.writerow(["Date", "Amount", "Currency", "Description", "Category", "Source"])
         
         for exp in expenses:
-            # We don't eager load category to save a join in simple export,
-            # but we can just use the category_id or omit name if needed.
-            # Realistically we should load it but this works for now.
             writer.writerow([
                 exp.expense_date.isoformat(),
                 str(exp.amount),
                 exp.currency,
                 exp.description or "",
-                str(exp.category_id) if exp.category_id else "Other",
+                exp.category.name if exp.category else "Other",
                 exp.source_type,
             ])
             
