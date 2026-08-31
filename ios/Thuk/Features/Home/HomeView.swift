@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct HomeView: View {
+    var switchToChat: (() -> Void)? = nil
     @Environment(APIClient.self) private var api
     @State private var summary: AnalyticsSummary?
     @State private var recentExpenses: [ExpenseResponse] = []
@@ -65,7 +66,7 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(timeGreeting())
                     .font(.system(size: 13, weight: .regular))
-                    .foregroundStyle(.thukSecondary)
+                    .foregroundStyle(Color.thukSecondary)
                 Text(api.currentUserName)
                     .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(.white)
@@ -73,7 +74,7 @@ struct HomeView: View {
             Spacer()
             Text(Date.now.monthYearDisplay)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.thukSecondary)
+                .foregroundStyle(Color.thukSecondary)
         }
     }
 
@@ -81,7 +82,7 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Spent this month")
                 .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(.thukSecondary)
+                .foregroundStyle(Color.thukSecondary)
 
             if isLoading {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -98,7 +99,7 @@ struct HomeView: View {
             if let count = summary?.count, count > 0 {
                 Text("\(count) transaction\(count == 1 ? "" : "s")")
                     .font(.system(size: 13))
-                    .foregroundStyle(.thukSecondary)
+                    .foregroundStyle(Color.thukSecondary)
             }
         }
     }
@@ -106,22 +107,22 @@ struct HomeView: View {
     private func budgetBar(_ b: BudgetResponse) -> some View {
         let pct = min((b.percentUsed ?? 0) / 100.0, 1.0)
         let isOver = (b.percentUsed ?? 0) > 100
-        let barColor: Color = isOver ? .thukDanger : (pct > 0.8 ? .thukWarning : .thukAccent)
+        let barColor: Color = isOver ? Color.thukDanger : (pct > 0.8 ? Color.thukWarning : Color.thukAccent)
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Budget")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.thukSecondary)
+                    .foregroundStyle(Color.thukSecondary)
                 Spacer()
                 if isOver {
                     Text("Over by \((b.spent - (b.amount ?? 0)).currencyDisplay(b.currency))")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.thukDanger)
+                        .foregroundStyle(Color.thukDanger)
                 } else if let rem = b.remaining {
                     Text("\(rem.currencyDisplay(b.currency)) left")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.thukSecondary)
+                        .foregroundStyle(Color.thukSecondary)
                 }
             }
 
@@ -146,27 +147,10 @@ struct HomeView: View {
             QuickActionButton(title: "Add", icon: "plus") {
                 showAddExpense = true
             }
-            NavigationLink {
-                ChatView()
-            } label: {
-                quickActionLabel(title: "Chat", icon: "bubble.left")
+            QuickActionButton(title: "Chat", icon: "bubble.left") {
+                switchToChat?()
             }
-            .buttonStyle(.plain)
         }
-    }
-
-    private func quickActionLabel(title: String, icon: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 15, weight: .medium))
-            Text(title)
-                .font(.system(size: 14, weight: .medium))
-        }
-        .foregroundStyle(.white)
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 14)
-        .background(Color.thukSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var recentSection: some View {
@@ -180,7 +164,7 @@ struct HomeView: View {
                     ExpenseListView()
                 }
                 .font(.system(size: 14))
-                .foregroundStyle(.thukAccent)
+                .foregroundStyle(Color.thukAccent)
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 12)
@@ -194,7 +178,7 @@ struct HomeView: View {
             } else if recentExpenses.isEmpty {
                 Text("No transactions yet. Add your first expense.")
                     .font(.system(size: 14))
-                    .foregroundStyle(.thukSecondary)
+                    .foregroundStyle(Color.thukSecondary)
                     .padding(.horizontal, 20)
             } else {
                 VStack(spacing: 0) {

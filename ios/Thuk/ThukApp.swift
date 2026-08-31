@@ -15,7 +15,7 @@ struct ThukApp: App {
             }
             .environment(api)
             .preferredColorScheme(.dark)
-            .tint(.thukAccent)
+            .tint(Color.thukAccent)
         }
     }
 }

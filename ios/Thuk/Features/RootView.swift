@@ -4,9 +4,13 @@ struct RootView: View {
     @Environment(APIClient.self) private var api
     @State private var selectedTab = 0
 
+    var selectedTabBinding: Binding<Int> {
+        Binding(get: { selectedTab }, set: { selectedTab = $0 })
+    }
+
     var body: some View {
         TabView(selection: $selectedTab) {
-            HomeView()
+            HomeView(switchToChat: { selectedTab = 1 })
                 .tabItem { Label("Home",     systemImage: "house") }
                 .tag(0)
 

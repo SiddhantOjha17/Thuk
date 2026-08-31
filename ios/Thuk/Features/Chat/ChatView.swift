@@ -53,7 +53,7 @@ struct ChatView: View {
                     if let err = viewModel.errorMessage {
                         Text(err)
                             .font(.system(size: 13))
-                            .foregroundStyle(.thukDanger)
+                            .foregroundStyle(Color.thukDanger)
                             .padding(.horizontal, 20)
                     }
                 }
@@ -79,7 +79,7 @@ struct ChatView: View {
                 PhotosPicker(selection: $photoItem, matching: .images) {
                     Image(systemName: "camera")
                         .font(.system(size: 20, weight: .medium))
-                        .foregroundStyle(.thukSecondary)
+                        .foregroundStyle(Color.thukSecondary)
                         .frame(width: 36, height: 36)
                 }
 
@@ -88,7 +88,7 @@ struct ChatView: View {
                     if viewModel.inputText.isEmpty {
                         Text("Message")
                             .font(.system(size: 16))
-                            .foregroundStyle(.thukSecondary)
+                            .foregroundStyle(Color.thukSecondary)
                             .padding(.horizontal, 12)
                     }
                     TextField("", text: $viewModel.inputText, axis: .vertical)
@@ -164,7 +164,7 @@ struct ChatView: View {
                 .foregroundStyle(.white)
             Text("Tell me what you spent.\nVoice, photo, or text — all work.")
                 .font(.system(size: 15))
-                .foregroundStyle(.thukSecondary)
+                .foregroundStyle(Color.thukSecondary)
                 .multilineTextAlignment(.center)
         }
     }

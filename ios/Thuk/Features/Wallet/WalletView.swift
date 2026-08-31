@@ -54,7 +54,7 @@ struct WalletView: View {
                 Spacer()
                 Button("Edit") { showBudgetEditor = true }
                     .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.thukAccent)
+                    .foregroundStyle(Color.thukAccent)
             }
 
             if isLoading {
@@ -62,7 +62,7 @@ struct WalletView: View {
             } else if let b = budget, let amount = b.amount {
                 let pct    = min((b.percentUsed ?? 0) / 100.0, 1.0)
                 let isOver = (b.percentUsed ?? 0) > 100
-                let color: Color = isOver ? .thukDanger : (pct > 0.8 ? .thukWarning : .thukSuccess)
+                let color: Color = isOver ? Color.thukDanger : (pct > 0.8 ? Color.thukWarning : Color.thukSuccess)
 
                 VStack(spacing: 12) {
                     HStack(alignment: .bottom) {
@@ -72,7 +72,7 @@ struct WalletView: View {
                                 .foregroundStyle(.white)
                             Text("of \(amount.currencyDisplay(b.currency))")
                                 .font(.system(size: 13))
-                                .foregroundStyle(.thukSecondary)
+                                .foregroundStyle(Color.thukSecondary)
                         }
                         Spacer()
                         VStack(alignment: .trailing, spacing: 4) {
@@ -82,7 +82,7 @@ struct WalletView: View {
                             if let rem = b.remaining, !isOver {
                                 Text("\(rem.currencyDisplay(b.currency)) left")
                                     .font(.system(size: 13))
-                                    .foregroundStyle(.thukSecondary)
+                                    .foregroundStyle(Color.thukSecondary)
                             }
                         }
                     }
@@ -103,11 +103,11 @@ struct WalletView: View {
                     HStack {
                         Text("Set a monthly budget")
                             .font(.system(size: 15))
-                            .foregroundStyle(.thukSecondary)
+                            .foregroundStyle(Color.thukSecondary)
                         Spacer()
                         Image(systemName: "chevron.right")
                             .font(.system(size: 13))
-                            .foregroundStyle(.thukSecondary)
+                            .foregroundStyle(Color.thukSecondary)
                     }
                     .padding(16)
                     .background(Color.thukSurfaceHi)
@@ -146,7 +146,7 @@ struct WalletView: View {
             } else {
                 Text("No pending debts.")
                     .font(.system(size: 14))
-                    .foregroundStyle(.thukSecondary)
+                    .foregroundStyle(Color.thukSecondary)
                     .padding(.vertical, 8)
             }
         }
@@ -169,7 +169,7 @@ struct WalletView: View {
                 } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.thukAccent)
+                        .foregroundStyle(Color.thukAccent)
                 }
             }
 
@@ -299,10 +299,10 @@ private struct DebtRow: View {
                     .foregroundStyle(.white)
                 Text(owesMe ? "Owes you" : "You owe")
                     .font(.system(size: 12))
-                    .foregroundStyle(.thukSecondary)
+                    .foregroundStyle(Color.thukSecondary)
                 + Text(debt.count > 1 ? " · \(debt.count) debts" : "")
                     .font(.system(size: 12))
-                    .foregroundStyle(.thukSecondary)
+                    .foregroundStyle(Color.thukSecondary)
             }
 
             Spacer()
@@ -344,7 +344,7 @@ private struct CategoryPill: View {
             CategoryIcon(name: category.name, hexColor: category.color, size: 32)
             Text(category.name)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.thukSecondary)
+                .foregroundStyle(Color.thukSecondary)
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity)
@@ -384,11 +384,11 @@ private struct BudgetEditorView: View {
                     VStack(spacing: 6) {
                         Text(amountString.isEmpty ? "0" : amountString)
                             .font(.amountDisplay(52))
-                            .foregroundStyle(amountString.isEmpty ? .thukSecondary : .white)
+                            .foregroundStyle(amountString.isEmpty ? Color.thukSecondary : .white)
                             .contentTransition(.numericText())
                         Text("INR / month")
                             .font(.system(size: 13))
-                            .foregroundStyle(.thukSecondary)
+                            .foregroundStyle(Color.thukSecondary)
                     }
                     .padding(.top, 24)
 
@@ -404,7 +404,7 @@ private struct BudgetEditorView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }.foregroundStyle(.thukSecondary)
+                    Button("Cancel") { dismiss() }.foregroundStyle(Color.thukSecondary)
                 }
             }
             .toolbarBackground(Color.thukSurface, for: .navigationBar)
@@ -468,7 +468,7 @@ private struct AddCategoryView: View {
                     HStack(spacing: 12) {
                         Image(systemName: "tag")
                             .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(.thukSecondary)
+                            .foregroundStyle(Color.thukSecondary)
                         TextField("Category name", text: $name)
                             .font(.system(size: 16))
                             .foregroundStyle(.white)
@@ -483,7 +483,7 @@ private struct AddCategoryView: View {
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Color")
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.thukSecondary)
+                            .foregroundStyle(Color.thukSecondary)
                             .padding(.horizontal, 20)
 
                         LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 5), spacing: 12) {
@@ -509,7 +509,7 @@ private struct AddCategoryView: View {
                     if let err = errorMessage {
                         Text(err)
                             .font(.system(size: 13))
-                            .foregroundStyle(.thukDanger)
+                            .foregroundStyle(Color.thukDanger)
                     }
 
                     Spacer()
@@ -523,7 +523,7 @@ private struct AddCategoryView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }.foregroundStyle(.thukSecondary)
+                    Button("Cancel") { dismiss() }.foregroundStyle(Color.thukSecondary)
                 }
             }
             .toolbarBackground(Color.thukSurface, for: .navigationBar)

@@ -18,7 +18,7 @@ struct TransactionRow: View {
 
                 Text(expense.expenseDate.shortDisplay)
                     .font(.caption)
-                    .foregroundStyle(.thukSecondary)
+                    .foregroundStyle(Color.thukSecondary)
             }
 
             Spacer()

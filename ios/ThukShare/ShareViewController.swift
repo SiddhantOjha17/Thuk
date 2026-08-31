@@ -122,8 +122,7 @@ final class ShareViewController: UIViewController {
     }
 
     private func uploadImage(_ data: Data, token: String) async throws {
-        // Update this to your Koyeb app URL after deployment
-        let url      = URL(string: "https://YOUR_APP.koyeb.app/api/chat/image")!
+        let url      = URL(string: "https://thuk-production.up.railway.app/api/chat/image")!
         let boundary = UUID().uuidString
 
         var request        = URLRequest(url: url)

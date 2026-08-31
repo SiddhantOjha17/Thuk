@@ -15,6 +15,15 @@ struct UserResponse: Codable {
     let createdAt: Date
 }
 
+extension APIClient {
+    func fetchAndStoreProfile() async {
+        if let user: UserResponse = try? await request("/api/me") {
+            currentUserName = user.name
+            Keychain.set(user.name, key: "user_name")
+        }
+    }
+}
+
 // MARK: - Categories
 
 struct CategoryResponse: Codable, Identifiable, Hashable {

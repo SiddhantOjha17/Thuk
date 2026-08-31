@@ -24,7 +24,7 @@ struct AuthView: View {
                             .foregroundStyle(.white)
                         Text("Personal expense tracker")
                             .font(.system(size: 14, weight: .regular))
-                            .foregroundStyle(.thukSecondary)
+                            .foregroundStyle(Color.thukSecondary)
                     }
                     .padding(.top, 80)
                     .padding(.bottom, 48)
@@ -37,7 +37,7 @@ struct AuthView: View {
                             } label: {
                                 Text(m == .login ? "Sign in" : "Create account")
                                     .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(mode == m ? .white : .thukSecondary)
+                                    .foregroundStyle(mode == m ? .white : Color.thukSecondary)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 10)
                                     .background(
@@ -74,7 +74,7 @@ struct AuthView: View {
                     if let msg = errorMessage {
                         Text(msg)
                             .font(.system(size: 13))
-                            .foregroundStyle(.thukDanger)
+                            .foregroundStyle(Color.thukDanger)
                             .padding(.top, 12)
                             .padding(.horizontal, 24)
                     }
@@ -115,7 +115,8 @@ struct AuthView: View {
         let tokens: TokenResponse = try await api.request(
             "/auth/login", method: "POST", body: Body(email: email, password: password)
         )
-        api.storeTokens(tokens, name: Keychain.get("user_name") ?? email, email: email)
+        api.storeTokens(tokens, name: email, email: email)
+        await api.fetchAndStoreProfile()
     }
 
     private func register() async throws {
@@ -144,7 +145,7 @@ private struct ThukTextField: View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(.thukSecondary)
+                .foregroundStyle(Color.thukSecondary)
                 .frame(width: 20)
 
             if isSecure {

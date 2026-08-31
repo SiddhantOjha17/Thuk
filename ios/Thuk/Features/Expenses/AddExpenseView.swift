@@ -44,7 +44,7 @@ struct AddExpenseView: View {
                         if let err = errorMessage {
                             Text(err)
                                 .font(.system(size: 13))
-                                .foregroundStyle(.thukDanger)
+                                .foregroundStyle(Color.thukDanger)
                                 .padding(.horizontal, 20)
                         }
 
@@ -63,7 +63,7 @@ struct AddExpenseView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
-                        .foregroundStyle(.thukSecondary)
+                        .foregroundStyle(Color.thukSecondary)
                 }
             }
             .toolbarBackground(Color.thukSurface, for: .navigationBar)
@@ -86,12 +86,12 @@ struct AddExpenseView: View {
         VStack(spacing: 4) {
             Text(amountString.isEmpty ? "0" : amountString)
                 .font(.amountDisplay(56))
-                .foregroundStyle(amountString.isEmpty ? .thukSecondary : .white)
+                .foregroundStyle(amountString.isEmpty ? Color.thukSecondary : .white)
                 .contentTransition(.numericText())
                 .animation(.easeInOut(duration: 0.1), value: amountString)
             Text("INR")
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.thukSecondary)
+                .foregroundStyle(Color.thukSecondary)
         }
         .padding(.top, 20)
     }
@@ -104,7 +104,7 @@ struct AddExpenseView: View {
             HStack(spacing: 12) {
                 Image(systemName: "text.alignleft")
                     .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(.thukSecondary)
+                    .foregroundStyle(Color.thukSecondary)
                     .frame(width: 20)
                 TextField("Description (optional)", text: $description)
                     .font(.system(size: 16))
@@ -129,16 +129,16 @@ struct AddExpenseView: View {
             HStack(spacing: 12) {
                 Image(systemName: "calendar")
                     .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(.thukSecondary)
+                    .foregroundStyle(Color.thukSecondary)
                     .frame(width: 20)
                 DatePicker("Date", selection: $expenseDate, in: ...Date.now, displayedComponents: .date)
                     .labelsHidden()
                     .colorScheme(.dark)
-                    .tint(.thukAccent)
+                    .tint(Color.thukAccent)
                 Spacer()
                 Text(expenseDate.shortDisplay)
                     .font(.system(size: 15))
-                    .foregroundStyle(.thukSecondary)
+                    .foregroundStyle(Color.thukSecondary)
             }
             .padding(16)
             .background(Color.thukSurface)
@@ -158,7 +158,7 @@ struct AddExpenseView: View {
                 }
                 Text(name)
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(selected ? .white : .thukSecondary)
+                    .foregroundStyle(selected ? .white : Color.thukSecondary)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)

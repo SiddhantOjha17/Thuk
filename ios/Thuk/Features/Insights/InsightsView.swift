@@ -49,7 +49,7 @@ struct InsightsView: View {
             } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.thukSecondary)
+                    .foregroundStyle(Color.thukSecondary)
             }
 
             Spacer()
@@ -83,7 +83,7 @@ struct InsightsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Total spend")
                         .font(.system(size: 13))
-                        .foregroundStyle(.thukSecondary)
+                        .foregroundStyle(Color.thukSecondary)
                     Text((summary?.total ?? 0).currencyDisplay(summary?.currency ?? "INR"))
                         .font(.amountDisplay(32))
                         .foregroundStyle(.white)
@@ -92,7 +92,7 @@ struct InsightsView: View {
                 if let count = summary?.count {
                     Text("\(count) transactions")
                         .font(.system(size: 13))
-                        .foregroundStyle(.thukSecondary)
+                        .foregroundStyle(Color.thukSecondary)
                 }
             }
 
@@ -113,7 +113,7 @@ struct InsightsView: View {
                     .overlay(
                         Text("No data this month")
                             .font(.system(size: 14))
-                            .foregroundStyle(.thukSecondary)
+                            .foregroundStyle(Color.thukSecondary)
                     )
             }
         }

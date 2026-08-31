@@ -2,8 +2,7 @@ import Foundation
 
 // MARK: - Configuration
 // Change this to your deployed backend URL.
-// Update this to your Koyeb app URL after deployment
-private let kBaseURL = URL(string: "https://YOUR_APP.koyeb.app")!
+private let kBaseURL = URL(string: "https://thuk-production.up.railway.app")!
 
 // MARK: - APIClient
 
@@ -92,7 +91,8 @@ final class APIClient {
 
     /// Download raw bytes (e.g. CSV export)
     func requestRawData(_ path: String) async throws -> Data {
-        var req = URLRequest(url: kBaseURL.appendingPathComponent(path))
+        guard let url = URL(string: kBaseURL.absoluteString + path) else { throw APIError.noData }
+        var req = URLRequest(url: url)
         req.httpMethod = "GET"
         if let token = accessToken {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -147,7 +147,10 @@ final class APIClient {
         body: Encodable?,
         retry: Bool
     ) async throws -> T {
-        var req = URLRequest(url: kBaseURL.appendingPathComponent(path))
+        guard let url = URL(string: kBaseURL.absoluteString + path) else {
+            throw APIError.noData
+        }
+        var req = URLRequest(url: url)
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if let token = accessToken {

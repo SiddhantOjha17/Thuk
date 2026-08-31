@@ -39,7 +39,7 @@ struct ExpenseListView: View {
                         Image(systemName: "plus")
                             .font(.system(size: 16, weight: .semibold))
                     }
-                    .tint(.thukAccent)
+                    .tint(Color.thukAccent)
                 }
             }
             .toolbarBackground(Color.thukSurface, for: .navigationBar)
@@ -78,7 +78,7 @@ struct ExpenseListView: View {
                     } label: {
                         Text(f.rawValue)
                             .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(viewModel.filter == f ? .white : .thukSecondary)
+                            .foregroundStyle(viewModel.filter == f ? .white : Color.thukSecondary)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
                             .background(viewModel.filter == f ? Color.thukAccent : Color.thukSurface)
@@ -96,7 +96,7 @@ struct ExpenseListView: View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.thukSecondary)
+                .foregroundStyle(Color.thukSecondary)
             TextField("Search", text: $viewModel.searchText)
                 .font(.system(size: 15))
                 .foregroundStyle(.white)
@@ -132,13 +132,13 @@ struct ExpenseListView: View {
                                 } label: {
                                     Label("Edit", systemImage: "pencil")
                                 }
-                                .tint(.thukAccent)
+                                .tint(Color.thukAccent)
                             }
                     }
                 } header: {
                     Text(group.key)
                         .font(.sectionHeader)
-                        .foregroundStyle(.thukSecondary)
+                        .foregroundStyle(Color.thukSecondary)
                         .listRowInsets(.init(top: 16, leading: 20, bottom: 4, trailing: 20))
                 }
             }
@@ -177,7 +177,7 @@ struct ExpenseListView: View {
                  ? "Add your first expense using the + button"
                  : "Try a different search term")
                 .font(.system(size: 14))
-                .foregroundStyle(.thukSecondary)
+                .foregroundStyle(Color.thukSecondary)
                 .multilineTextAlignment(.center)
             Spacer()
         }

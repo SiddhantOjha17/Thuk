@@ -36,7 +36,7 @@ struct DestructiveButton: View {
         Button(role: .destructive, action: action) {
             Text(title)
                 .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(.thukDanger)
+                .foregroundStyle(Color.thukDanger)
                 .frame(maxWidth: .infinity)
                 .frame(height: 52)
                 .background(
