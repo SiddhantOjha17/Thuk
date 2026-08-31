@@ -35,6 +35,9 @@ struct WalletView: View {
             .navigationBarTitleDisplayMode(.large)
         }
         .onAppear { Task { await load() } }
+        .onReceive(NotificationCenter.default.publisher(for: .dataDidChange)) { _ in
+            Task { await load() }
+        }
         .sheet(isPresented: $showBudgetEditor) {
             BudgetEditorView(current: budget) { await load() }
         }

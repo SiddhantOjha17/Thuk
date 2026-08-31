@@ -55,6 +55,9 @@ struct HomeView: View {
             .navigationBarHidden(true)
         }
         .onAppear { Task { await loadAll() } }
+        .onReceive(NotificationCenter.default.publisher(for: .dataDidChange)) { _ in
+            Task { await loadAll() }
+        }
         .sheet(isPresented: $showAddExpense) {
             AddExpenseView()
         }

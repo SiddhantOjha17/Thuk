@@ -3,8 +3,15 @@
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, PlainSerializer
+
+# Decimal fields serialized as JSON numbers (not strings) so iOS/JS can decode them
+DecimalNumber = Annotated[
+    Decimal,
+    PlainSerializer(lambda x: float(x), return_type=float, when_used="json"),
+]
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -83,7 +90,7 @@ class ExpenseResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    amount: Decimal
+    amount: DecimalNumber
     currency: str
     description: str | None
     category_id: uuid.UUID | None
@@ -102,10 +109,10 @@ class BudgetUpdate(BaseModel):
 
 
 class BudgetResponse(BaseModel):
-    amount: Decimal | None
+    amount: DecimalNumber | None
     currency: str
-    spent: Decimal
-    remaining: Decimal | None
+    spent: DecimalNumber
+    remaining: DecimalNumber | None
     percent_used: float | None
 
 
@@ -117,7 +124,7 @@ class DebtResponse(BaseModel):
 
     id: uuid.UUID
     person_name: str
-    total: Decimal
+    total: DecimalNumber
     currency: str
     direction: str   # "owes_me" | "i_owe"
     count: int       # number of unsettled debt records aggregated
@@ -125,8 +132,8 @@ class DebtResponse(BaseModel):
 
 
 class DebtSummaryResponse(BaseModel):
-    total_owed_to_me: Decimal
-    total_i_owe: Decimal
+    total_owed_to_me: DecimalNumber
+    total_i_owe: DecimalNumber
     debts: list[DebtResponse]
 
 
@@ -135,12 +142,12 @@ class DebtSummaryResponse(BaseModel):
 
 class CategoryAmount(BaseModel):
     category_name: str
-    amount: Decimal
+    amount: DecimalNumber
     color: str | None = None
 
 
 class AnalyticsSummary(BaseModel):
-    total: Decimal
+    total: DecimalNumber
     currency: str
     count: int
     by_category: list[CategoryAmount]
@@ -150,7 +157,7 @@ class AnalyticsSummary(BaseModel):
 
 class DailyAmount(BaseModel):
     date: date
-    amount: Decimal
+    amount: DecimalNumber
 
 
 class AnalyticsDaily(BaseModel):

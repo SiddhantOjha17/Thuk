@@ -94,6 +94,11 @@ final class ChatViewModel: NSObject, AVAudioRecorderDelegate {
         do {
             let response = try await request()
             messages.append(.init(role: .assistant, content: response.response))
+            // If the agent added/edited/deleted an expense, notify all views to reload
+            let lower = response.response.lowercased()
+            if lower.contains("added") || lower.contains("deleted") || lower.contains("updated") {
+                notifyDataChanged()
+            }
         } catch let e as APIError {
             errorMessage = e.errorDescription
         } catch {

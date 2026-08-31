@@ -20,17 +20,26 @@ final class APIClient {
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
         d.keyDecodingStrategy = .convertFromSnakeCase
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let isoShort = ISO8601DateFormatter()
-        isoShort.formatOptions = [.withFullDate]
+
+        // Try multiple ISO8601 formats to handle:
+        // - "2026-08-31T12:39:38.735011Z"  (with Z + fractional)
+        // - "2026-08-31T12:39:38Z"          (with Z, no fractional)
+        // - "2026-08-31T12:39:38.735011"    (no timezone)
+        // - "2026-08-31"                    (date only)
+        let formatters: [ISO8601DateFormatter] = [
+            { let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]; return f }(),
+            { let f = ISO8601DateFormatter(); f.formatOptions = [.withInternetDateTime]; return f }(),
+            { let f = ISO8601DateFormatter(); f.formatOptions = [.withFullDate, .withTime, .withColonSeparatorInTime, .withFractionalSeconds]; return f }(),
+            { let f = ISO8601DateFormatter(); f.formatOptions = [.withFullDate]; return f }(),
+        ]
         d.dateDecodingStrategy = .custom { decoder in
             let s = try decoder.singleValueContainer().decode(String.self)
-            if let d = iso.date(from: s) { return d }
-            if let d = isoShort.date(from: s) { return d }
+            for fmt in formatters {
+                if let date = fmt.date(from: s) { return date }
+            }
             throw DecodingError.dataCorrupted(.init(
                 codingPath: decoder.codingPath,
-                debugDescription: "Invalid date: \(s)"
+                debugDescription: "Cannot parse date: \(s)"
             ))
         }
         return d

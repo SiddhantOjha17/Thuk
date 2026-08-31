@@ -183,13 +183,19 @@ struct AddExpenseView: View {
                 success = await vm.add(amount: amount, currency: "INR", description: description.isEmpty ? nil : description, categoryId: selectedCategoryId, date: expenseDate)
             } else {
                 // Standalone (from HomeView)
-                let body = ExpenseCreate(amount: amount, currency: "INR", description: description.isEmpty ? nil : description, categoryId: selectedCategoryId, expenseDate: expenseDate.isoDate)
-                let _: ExpenseResponse? = try? await api.request("/api/expenses", method: "POST", body: body)
-                success = true
+                do {
+                    let body = ExpenseCreate(amount: amount, currency: "INR", description: description.isEmpty ? nil : description, categoryId: selectedCategoryId, expenseDate: expenseDate.isoDate)
+                    let _: ExpenseResponse = try await api.request("/api/expenses", method: "POST", body: body)
+                    success = true
+                } catch {
+                    errorMessage = "Could not save expense."
+                    success = false
+                }
             }
             isLoading = false
             if success {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
+                notifyDataChanged()
                 onSave?()
                 dismiss()
             } else {

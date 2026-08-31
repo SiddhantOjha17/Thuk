@@ -44,6 +44,9 @@ struct ExpenseListView: View {
             }
         }
         .onAppear { Task { await viewModel.load() } }
+        .onReceive(NotificationCenter.default.publisher(for: .dataDidChange)) { _ in
+            Task { await viewModel.load() }
+        }
         .onChange(of: viewModel.filter) { _, _ in Task { await viewModel.load() } }
         .sheet(isPresented: $showAdd) {
             AddExpenseView(viewModel: viewModel)

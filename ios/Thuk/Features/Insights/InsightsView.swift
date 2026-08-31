@@ -35,6 +35,9 @@ struct InsightsView: View {
             .navigationBarTitleDisplayMode(.large)
         }
         .onAppear { Task { await load() } }
+        .onReceive(NotificationCenter.default.publisher(for: .dataDidChange)) { _ in
+            Task { await load() }
+        }
         .onChange(of: selectedDate) { _, _ in Task { await load() } }
     }
 

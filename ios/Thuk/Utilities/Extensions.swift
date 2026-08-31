@@ -67,6 +67,17 @@ extension Date {
     }
 }
 
+// MARK: - Data refresh notification
+
+extension Notification.Name {
+    /// Posted whenever expenses, budget, or debts change so all tabs reload.
+    static let dataDidChange = Notification.Name("thuk.dataDidChange")
+}
+
+func notifyDataChanged() {
+    NotificationCenter.default.post(name: .dataDidChange, object: nil)
+}
+
 // MARK: - Time-aware greeting
 
 func timeGreeting() -> String {

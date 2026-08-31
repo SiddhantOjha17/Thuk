@@ -65,6 +65,7 @@ final class ExpensesViewModel {
         do {
             try await api.requestNoBody("/api/expenses/\(expense.id)", method: "DELETE")
             expenses.removeAll { $0.id == expense.id }
+            notifyDataChanged()
         } catch {
             errorMessage = "Could not delete expense."
         }
