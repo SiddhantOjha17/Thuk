@@ -3,6 +3,7 @@ import SwiftUI
 struct WalletView: View {
     @Environment(APIClient.self) private var api
     @State private var budget: BudgetResponse?
+
     @State private var debtSummary: DebtSummary?
     @State private var categories: [CategoryResponse] = []
     @State private var isLoading = true
@@ -24,6 +25,7 @@ struct WalletView: View {
                         debtsSection
                         categoriesSection
                         exportSection
+                        logoutSection
                     }
                     .padding(.bottom, 32)
                 }
@@ -31,10 +33,8 @@ struct WalletView: View {
             }
             .navigationTitle("Wallet")
             .navigationBarTitleDisplayMode(.large)
-            .toolbarBackground(Color.thukSurface, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
         }
-        .task { await load() }
+        .onAppear { Task { await load() } }
         .sheet(isPresented: $showBudgetEditor) {
             BudgetEditorView(current: budget) { await load() }
         }
@@ -188,6 +188,22 @@ struct WalletView: View {
     }
 
     // MARK: - Export
+
+    private var logoutSection: some View {
+        Button {
+            api.logout()
+        } label: {
+            Text("Sign out")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Color.thukDanger)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(Color.thukSurface)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 20)
+    }
 
     private var exportSection: some View {
         Button { exportCSV() } label: {
@@ -407,8 +423,6 @@ private struct BudgetEditorView: View {
                     Button("Cancel") { dismiss() }.foregroundStyle(Color.thukSecondary)
                 }
             }
-            .toolbarBackground(Color.thukSurface, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
         }
         .onAppear {
             if let amt = current?.amount { amountString = "\(amt)" }
@@ -526,8 +540,6 @@ private struct AddCategoryView: View {
                     Button("Cancel") { dismiss() }.foregroundStyle(Color.thukSecondary)
                 }
             }
-            .toolbarBackground(Color.thukSurface, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
         }
     }
 

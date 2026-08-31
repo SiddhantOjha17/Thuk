@@ -42,10 +42,8 @@ struct ExpenseListView: View {
                     .tint(Color.thukAccent)
                 }
             }
-            .toolbarBackground(Color.thukSurface, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
         }
-        .task { await viewModel.load() }
+        .onAppear { Task { await viewModel.load() } }
         .onChange(of: viewModel.filter) { _, _ in Task { await viewModel.load() } }
         .sheet(isPresented: $showAdd) {
             AddExpenseView(viewModel: viewModel)

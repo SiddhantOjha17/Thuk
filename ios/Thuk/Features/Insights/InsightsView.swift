@@ -33,10 +33,8 @@ struct InsightsView: View {
             }
             .navigationTitle("Insights")
             .navigationBarTitleDisplayMode(.large)
-            .toolbarBackground(Color.thukSurface, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
         }
-        .task { await load() }
+        .onAppear { Task { await load() } }
         .onChange(of: selectedDate) { _, _ in Task { await load() } }
     }
 

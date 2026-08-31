@@ -8,6 +8,7 @@ struct HomeView: View {
     @State private var budget: BudgetResponse?
     @State private var isLoading = true
     @State private var showAddExpense = false
+    @State private var showChat = false
 
     private var monthRange: (start: String, end: String) {
         let now = Date.now
@@ -53,9 +54,12 @@ struct HomeView: View {
             }
             .navigationBarHidden(true)
         }
-        .task { await loadAll() }
+        .onAppear { Task { await loadAll() } }
         .sheet(isPresented: $showAddExpense) {
             AddExpenseView()
+        }
+        .sheet(isPresented: $showChat) {
+            ChatView(onDismiss: { showChat = false })
         }
     }
 
@@ -148,7 +152,7 @@ struct HomeView: View {
                 showAddExpense = true
             }
             QuickActionButton(title: "Chat", icon: "bubble.left") {
-                switchToChat?()
+                showChat = true
             }
         }
     }

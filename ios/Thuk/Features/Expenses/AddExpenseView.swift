@@ -66,8 +66,6 @@ struct AddExpenseView: View {
                         .foregroundStyle(Color.thukSecondary)
                 }
             }
-            .toolbarBackground(Color.thukSurface, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
         }
         .task {
             categories = (try? await api.request("/api/categories")) ?? []

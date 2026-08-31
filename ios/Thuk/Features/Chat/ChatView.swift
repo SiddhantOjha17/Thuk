@@ -2,6 +2,8 @@ import SwiftUI
 import PhotosUI
 
 struct ChatView: View {
+    /// When non-nil the view is presented as a sheet and shows a Done button.
+    var onDismiss: (() -> Void)? = nil
     @State private var viewModel = ChatViewModel()
     @State private var photoItem: PhotosPickerItem?
     @State private var isHoldingMic = false
@@ -19,8 +21,14 @@ struct ChatView: View {
             }
             .navigationTitle("Chat")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(Color.thukSurface, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                if let onDismiss {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done", action: onDismiss)
+                            .foregroundStyle(Color.thukAccent)
+                    }
+                }
+            }
         }
         .onChange(of: photoItem) { _, item in
             guard let item else { return }

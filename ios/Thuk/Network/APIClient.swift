@@ -202,7 +202,8 @@ final class APIClient {
         guard let rt = refreshToken else { throw APIError.unauthorized }
 
         struct RefreshBody: Encodable { let refreshToken: String }
-        var req = URLRequest(url: kBaseURL.appendingPathComponent("/auth/refresh"))
+        guard let refreshURL = URL(string: kBaseURL.absoluteString + "/auth/refresh") else { throw APIError.unauthorized }
+        var req = URLRequest(url: refreshURL)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try encoder.encode(RefreshBody(refreshToken: rt))
