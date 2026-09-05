@@ -71,12 +71,13 @@ final class ExpensesViewModel {
         }
     }
 
-    func add(amount: Decimal, currency: String, description: String?, categoryId: UUID?, date: Date) async -> Bool {
+    func add(amount: Decimal, currency: String, description: String?, categoryId: UUID?, date: Date, splitPeople: [String]? = nil) async -> Bool {
         do {
             let body = ExpenseCreate(
                 amount: amount, currency: currency,
                 description: description?.isEmpty == true ? nil : description,
-                categoryId: categoryId, expenseDate: date.isoDate
+                categoryId: categoryId, expenseDate: date.isoDate,
+                splitPeople: (splitPeople?.isEmpty == false) ? splitPeople : nil
             )
             let created: ExpenseResponse = try await api.request("/api/expenses", method: "POST", body: body)
             expenses.insert(created, at: 0)

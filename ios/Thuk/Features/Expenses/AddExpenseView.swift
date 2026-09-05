@@ -13,11 +13,23 @@ struct AddExpenseView: View {
     @State private var categories: [CategoryResponse] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var isSplitting = false
+    @State private var splitPeople: [String] = [""]
 
     private let api = APIClient.shared
 
     private var amountDecimal: Decimal? {
         amountString.isEmpty ? nil : Decimal(string: amountString)
+    }
+
+    private var splitParticipants: [String] {
+        splitPeople.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    }
+
+    private var perPersonShare: Decimal? {
+        guard let amount = amountDecimal, amount > 0 else { return nil }
+        let count = Decimal(splitParticipants.count + 1)
+        return amount / count
     }
 
     var body: some View {
@@ -141,8 +153,75 @@ struct AddExpenseView: View {
             .padding(16)
             .background(Color.thukSurface)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            if editingExpense == nil {
+                splitSection
+            }
         }
         .padding(.horizontal, 20)
+    }
+
+    // MARK: - Split section
+
+    private var splitSection: some View {
+        VStack(spacing: 12) {
+            Toggle(isOn: $isSplitting.animation()) {
+                HStack(spacing: 12) {
+                    Image(systemName: "person.2")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Color.thukSecondary)
+                        .frame(width: 20)
+                    Text("Split with others")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.white)
+                }
+            }
+            .tint(Color.thukAccent)
+            .padding(16)
+            .background(Color.thukSurface)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            if isSplitting {
+                VStack(spacing: 8) {
+                    ForEach(splitPeople.indices, id: \.self) { i in
+                        HStack(spacing: 8) {
+                            TextField("Person's name", text: $splitPeople[i])
+                                .font(.system(size: 15))
+                                .foregroundStyle(.white)
+                            if splitPeople.count > 1 {
+                                Button {
+                                    splitPeople.remove(at: i)
+                                } label: {
+                                    Image(systemName: "minus.circle.fill")
+                                        .foregroundStyle(Color.thukSecondary)
+                                }
+                            }
+                        }
+                        .padding(12)
+                        .background(Color.thukSurface)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+
+                    Button {
+                        splitPeople.append("")
+                    } label: {
+                        Label("Add person", systemImage: "plus")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(Color.thukAccent)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
+
+                    if let share = perPersonShare, !splitParticipants.isEmpty {
+                        Text("Your share: \(share.currencyDisplay()) · \(splitParticipants.count) \(splitParticipants.count == 1 ? "person" : "people") owe you")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color.thukSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 4)
+                    }
+                }
+            }
+        }
     }
 
     private func categoryChip(_ id: UUID?, name: String, hexColor: String? = nil) -> some View {
@@ -175,16 +254,17 @@ struct AddExpenseView: View {
         }
         isLoading = true
         errorMessage = nil
+        let people = (isSplitting && !splitParticipants.isEmpty) ? splitParticipants : nil
         Task {
             let success: Bool
             if let editing = editingExpense, let vm = viewModel {
                 success = await vm.update(editing, amount: amount, description: description.isEmpty ? nil : description, categoryId: selectedCategoryId, date: expenseDate)
             } else if let vm = viewModel {
-                success = await vm.add(amount: amount, currency: "INR", description: description.isEmpty ? nil : description, categoryId: selectedCategoryId, date: expenseDate)
+                success = await vm.add(amount: amount, currency: "INR", description: description.isEmpty ? nil : description, categoryId: selectedCategoryId, date: expenseDate, splitPeople: people)
             } else {
                 // Standalone (from HomeView)
                 do {
-                    let body = ExpenseCreate(amount: amount, currency: "INR", description: description.isEmpty ? nil : description, categoryId: selectedCategoryId, expenseDate: expenseDate.isoDate)
+                    let body = ExpenseCreate(amount: amount, currency: "INR", description: description.isEmpty ? nil : description, categoryId: selectedCategoryId, expenseDate: expenseDate.isoDate, splitPeople: people)
                     let _: ExpenseResponse = try await api.request("/api/expenses", method: "POST", body: body)
                     success = true
                 } catch {

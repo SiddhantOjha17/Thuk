@@ -46,19 +46,34 @@ async def create_expense(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Manually add an expense."""
+    """Manually add an expense, optionally split with other people."""
     from app.database import crud
     from app.database.models import SourceType
-    expense = await crud.create_expense(
-        db,
-        user_id=user.id,
-        amount=body.amount,
-        currency=body.currency,
-        description=body.description,
-        category_id=body.category_id,
-        source_type=SourceType.TEXT,
-        expense_date=body.expense_date or date.today(),
-    )
+
+    if body.split_count or body.split_people:
+        expense = await crud.create_split_expense(
+            db,
+            user_id=user.id,
+            amount=body.amount,
+            currency=body.currency,
+            description=body.description,
+            category_id=body.category_id,
+            source_type=SourceType.TEXT,
+            expense_date=body.expense_date or date.today(),
+            split_count=body.split_count,
+            split_people=body.split_people,
+        )
+    else:
+        expense = await crud.create_expense(
+            db,
+            user_id=user.id,
+            amount=body.amount,
+            currency=body.currency,
+            description=body.description,
+            category_id=body.category_id,
+            source_type=SourceType.TEXT,
+            expense_date=body.expense_date or date.today(),
+        )
     # Reload with category
     result = await db.execute(
         select(Expense)

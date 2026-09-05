@@ -9,7 +9,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.llm.factory import get_llm, get_response_llm, ModelTask
+from app.llm.factory import content_to_text, get_llm, get_response_llm, ModelTask
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -74,7 +74,7 @@ CRITICAL RULES:
         ]
 
         result = await self.sql_llm.ainvoke(messages)
-        return result.content.strip().replace("```sql", "").replace("```", "").strip()
+        return content_to_text(result.content).strip().replace("```sql", "").replace("```", "").strip()
 
     async def execute_query(self, db: AsyncSession, natural_query: str) -> str:
         """Generate SQL, execute it securely, and format the response."""
@@ -115,8 +115,8 @@ Please formulate a very brief, friendly, perfectly formatted WhatsApp message re
 - If the result list is empty, kindly state that no records match.
 - Use bullet points if there are multiple rows.
 """
-            final_response = await self.response_llm.ainvoke([SystemMessage(content=format_prompt)])
-            return final_response.content
+            final_response = await self.response_llm.ainvoke([HumanMessage(content=format_prompt)])
+            return content_to_text(final_response.content)
 
         except Exception as e:
             logger.error(f"Text2SQL execution failed. Query: {natural_query}", error=str(e), exc_info=True)

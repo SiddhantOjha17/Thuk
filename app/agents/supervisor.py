@@ -73,6 +73,18 @@ class SupervisorAgent:
         # Compile LangGraph workflow once and reuse for this user
         self.app = self.build_graph().compile()
 
+    def refresh_user(self, user) -> None:
+        """Rebind to the User instance from the current request's DB session.
+
+        This SupervisorAgent (and its sub-agents) is cached per user id across
+        requests, but each request gets its own SQLAlchemy session — reusing a
+        `user` object from a previous, now-closed session raises
+        DetachedInstanceError the moment an attribute is accessed. Must be
+        called on every cache hit before `process()`.
+        """
+        self.user = user
+        self.query_agent.user = user
+
     async def route_message(self, state: AgentState) -> AgentState:
         """Parse message and determine routing."""
         msg = state["user_message"]
@@ -398,26 +410,26 @@ class SupervisorAgent:
         Returns:
             Response message
         """
-        # Load history
-        history_dicts = await store.get_history(str(self.user.id), limit=6)
-        messages = []
-        for msg in history_dicts:
-            if msg["role"] == "user":
-                messages.append(HumanMessage(content=msg["content"]))
-            else:
-                messages.append(AIMessage(content=msg["content"]))
-
-        initial_state: AgentState = {
-            "messages": messages,
-            "user_message": message,
-            "parsed": None,
-            "response": "",
-            "user": self.user,
-            "db": db,
-            "source_type": source_type,
-        }
-
         try:
+            # Load history
+            history_dicts = await store.get_history(str(self.user.id), limit=6)
+            messages = []
+            for msg in history_dicts:
+                if msg["role"] == "user":
+                    messages.append(HumanMessage(content=msg["content"]))
+                else:
+                    messages.append(AIMessage(content=msg["content"]))
+
+            initial_state: AgentState = {
+                "messages": messages,
+                "user_message": message,
+                "parsed": None,
+                "response": "",
+                "user": self.user,
+                "db": db,
+                "source_type": source_type,
+            }
+
             # 30-second timeout for the entire agent workflow
             result = await asyncio.wait_for(self.app.ainvoke(initial_state), timeout=30.0)
             

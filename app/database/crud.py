@@ -271,6 +271,67 @@ async def delete_last_expense(db: AsyncSession, user_id: uuid.UUID) -> Expense |
 # ============== Split Operations ==============
 
 
+async def create_split_expense(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    amount: Decimal,
+    currency: str,
+    description: str | None,
+    category_id: uuid.UUID | None,
+    source_type: SourceType,
+    expense_date: date | None,
+    split_count: int | None,
+    split_people: list[str] | None,
+) -> Expense:
+    """Create an expense split across multiple people, plus debt records for named participants.
+
+    `amount` is the total amount paid, not the user's share. The expense is recorded
+    at the user's share only; the difference is tracked as debts owed by named
+    participants (if any were given).
+    """
+    count = split_count or (len(split_people or []) + 1)
+    per_person = amount / Decimal(count)
+    user_share = per_person
+
+    expense = await create_expense(
+        db=db,
+        user_id=user_id,
+        amount=user_share,
+        currency=currency,
+        description=description,
+        category_id=category_id,
+        source_type=source_type,
+        expense_date=expense_date,
+        metadata={
+            "original_amount": str(amount),
+            "split_count": count,
+        },
+    )
+
+    await create_split(
+        db=db,
+        expense_id=expense.id,
+        user_id=user_id,
+        total_people=count,
+        user_paid=amount,
+        total_amount=amount,
+    )
+
+    if split_people:
+        for person_name in split_people:
+            await create_debt(
+                db=db,
+                user_id=user_id,
+                person_name=person_name,
+                amount=per_person,
+                currency=currency,
+                direction=DebtDirection.OWES_ME,
+                related_expense_id=expense.id,
+            )
+
+    return expense
+
+
 async def create_split(
     db: AsyncSession,
     expense_id: uuid.UUID,

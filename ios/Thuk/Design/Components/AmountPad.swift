@@ -6,9 +6,9 @@ struct AmountPad: View {
     @Binding var amountString: String
 
     private let keys: [[String]] = [
-        ["7", "8", "9"],
-        ["4", "5", "6"],
         ["1", "2", "3"],
+        ["4", "5", "6"],
+        ["7", "8", "9"],
         [".", "0", "⌫"],
     ]
 

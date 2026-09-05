@@ -53,6 +53,8 @@ struct ExpenseCreate: Encodable {
     let description: String?
     let categoryId: UUID?
     let expenseDate: String  // ISO8601 date string "YYYY-MM-DD"
+    var splitCount: Int? = nil
+    var splitPeople: [String]? = nil
 }
 
 struct ExpenseUpdate: Encodable {

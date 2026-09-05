@@ -3,44 +3,17 @@
 import base64
 import json
 
+from langchain_core.messages import HumanMessage, SystemMessage
 from openai import AsyncOpenAI
 
 from app.config import get_settings
+from app.llm.factory import ModelTask, content_to_text, get_llm
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
+_EXTRACT_SYSTEM_PROMPT = """You are an expert at extracting transaction details from bank SMS screenshots and transaction receipts.
 
-class ImageProcessor:
-    """Process images using OpenAI Vision API."""
-
-    def __init__(self, user=None):
-        """Initialize using the operator LLM (Gemini for images, OpenAI fallback)."""
-        # ImageProcessor still uses OpenAI vision as a direct client;
-        # Gemini vision is used via the LLMFactory in the agent layer.
-        settings = get_settings()
-        self.client = AsyncOpenAI(api_key=settings.openai_api_key)
-
-    async def extract_text(self, image_data: bytes) -> str | None:
-        """Extract transaction details from a bank SMS/transaction screenshot.
-
-        Args:
-            image_data: Raw image bytes
-
-        Returns:
-            Extracted transaction details as text, or None if extraction failed
-        """
-        # Encode image to base64
-        base64_image = base64.b64encode(image_data).decode("utf-8")
-
-        try:
-            response = await self.client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {
-                        "role": "system",
-                        "content": """You are an expert at extracting transaction details from bank SMS screenshots and transaction receipts.
-                        
 Extract the following information if present:
 - Amount (with currency symbol if visible)
 - Merchant/Description (who the payment was to)
@@ -54,8 +27,66 @@ or
 "Received $100 from John on Dec 19"
 
 If you cannot extract any transaction details, respond with "NO_TRANSACTION_FOUND".
-Be concise and include only the extracted information.""",
-                    },
+Be concise and include only the extracted information."""
+
+
+class ImageProcessor:
+    """Process images using Gemini vision (primary), OpenAI Vision as runtime fallback."""
+
+    def __init__(self, user=None):
+        """Initialize the OpenAI fallback client (Gemini is resolved lazily via the LLM factory)."""
+        settings = get_settings()
+        self._openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
+
+    async def extract_text(self, image_data: bytes) -> str | None:
+        """Extract transaction details from a bank SMS/transaction screenshot.
+
+        Tries Gemini (the documented primary provider) first, falling back to
+        OpenAI Vision only if the Gemini call itself fails (auth/quota/network),
+        so a single provider outage doesn't take the whole feature down.
+
+        Args:
+            image_data: Raw image bytes
+
+        Returns:
+            Extracted transaction details as text, or None if extraction failed
+        """
+        base64_image = base64.b64encode(image_data).decode("utf-8")
+
+        try:
+            llm = get_llm(ModelTask.IMAGE)
+            response = await llm.ainvoke(
+                [
+                    SystemMessage(content=_EXTRACT_SYSTEM_PROMPT),
+                    HumanMessage(
+                        content=[
+                            {
+                                "type": "text",
+                                "text": "Extract the transaction details from this image:",
+                            },
+                            {
+                                "type": "image_url",
+                                "image_url": f"data:image/jpeg;base64,{base64_image}",
+                            },
+                        ]
+                    ),
+                ]
+            )
+            result = content_to_text(response.content).strip()
+            if result and "NO_TRANSACTION_FOUND" not in result:
+                return result
+            return None
+        except Exception as e:
+            logger.warning(
+                "Gemini image extraction failed, falling back to OpenAI Vision",
+                error=str(e),
+            )
+
+        try:
+            response = await self._openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": _EXTRACT_SYSTEM_PROMPT},
                     {
                         "role": "user",
                         "content": [
@@ -82,7 +113,11 @@ Be concise and include only the extracted information.""",
             return None
 
         except Exception as e:
-            logger.error("Error extracting text from image", error=str(e), exc_info=True)
+            logger.error(
+                "Error extracting text from image (Gemini and OpenAI both failed)",
+                error=str(e),
+                exc_info=True,
+            )
             return None
 
     async def analyze_receipt(self, image_data: bytes) -> dict | None:
@@ -97,7 +132,7 @@ Be concise and include only the extracted information.""",
         base64_image = base64.b64encode(image_data).decode("utf-8")
 
         try:
-            response = await self.client.chat.completions.create(
+            response = await self._openai_client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
                     {

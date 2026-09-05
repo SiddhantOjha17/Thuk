@@ -76,6 +76,9 @@ class ExpenseCreate(BaseModel):
     description: str | None = None
     category_id: uuid.UUID | None = None
     expense_date: date | None = None
+    # Split (optional): `amount` above is the total paid, not the user's share.
+    split_count: int | None = Field(default=None, ge=2)
+    split_people: list[str] | None = None
 
 
 class ExpenseUpdate(BaseModel):

@@ -43,7 +43,6 @@ class SplitAgent:
         if split_count is None and parsed.split_people:
             split_count = len(parsed.split_people) + 1  # +1 for the user
 
-        # Calculate amounts
         total_amount = parsed.amount
         per_person = total_amount / Decimal(split_count)
         user_share = per_person
@@ -54,44 +53,18 @@ class SplitAgent:
         if parsed.category_hint:
             category = await crud.get_category_by_name(db, user.id, parsed.category_hint)
 
-        # Create the expense (user's share only)
-        expense = await crud.create_expense(
+        await crud.create_split_expense(
             db=db,
             user_id=user.id,
-            amount=user_share,  # Only user's share is their expense
+            amount=total_amount,
             currency=parsed.currency,
             description=parsed.description,
             category_id=category.id if category else None,
             source_type=SourceType(source_type),
             expense_date=parsed.expense_date or date.today(),
-            metadata={
-                "original_amount": str(total_amount),
-                "split_count": split_count,
-            },
+            split_count=split_count,
+            split_people=parsed.split_people,
         )
-
-        # Create split record
-        await crud.create_split(
-            db=db,
-            expense_id=expense.id,
-            user_id=user.id,
-            total_people=split_count,
-            user_paid=total_amount,  # User paid the full amount
-            total_amount=total_amount,
-        )
-
-        # Create debts for named people
-        if parsed.split_people:
-            for person_name in parsed.split_people:
-                await crud.create_debt(
-                    db=db,
-                    user_id=user.id,
-                    person_name=person_name,
-                    amount=per_person,
-                    currency=parsed.currency,
-                    direction=DebtDirection.OWES_ME,
-                    related_expense_id=expense.id,
-                )
 
         # Format response
         total_str = format_amount(total_amount, parsed.currency)

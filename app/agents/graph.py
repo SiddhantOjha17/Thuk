@@ -30,5 +30,10 @@ async def process_message(
     if supervisor is None:
         supervisor = SupervisorAgent(user)
         _agent_cache[user_key] = supervisor
+    else:
+        # Rebind to this request's User instance — the cached supervisor's own
+        # `user` is still attached to whatever DB session created it, which is
+        # closed by now and would raise DetachedInstanceError on attribute access.
+        supervisor.refresh_user(user)
 
     return await supervisor.process(message, db, source_type)

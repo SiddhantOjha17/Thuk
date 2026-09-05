@@ -263,7 +263,7 @@ RULES:
 3. If an instruction says "shift this 278 expense to food", it means changing the category, NOT the amount or description.
 """
         try:
-            patch: ExpensePatch = await llm.ainvoke([SystemMessage(content=prompt)])
+            patch: ExpensePatch = await llm.ainvoke([HumanMessage(content=prompt)])
         except Exception as e:
             return f"I couldn't process the edit instruction: {str(e)}"
 
@@ -318,7 +318,7 @@ Task:
 4. If it's a completely new category (e.g. 'Gaming', 'Gym'), return the cleanly formatted, Capitalized new category name.
 Only return the final string."""
 
-            res = await llm.ainvoke([SystemMessage(content=prompt)])
+            res = await llm.ainvoke([HumanMessage(content=prompt)])
             return res.mapped_category
         except Exception as e:
             logger.error("LLM category resolution failed", error=str(e))
