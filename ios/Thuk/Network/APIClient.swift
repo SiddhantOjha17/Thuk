@@ -14,6 +14,11 @@ final class APIClient {
     var currentUserName: String = ""
     var currentUserEmail: String = ""
 
+    /// True while retrying a request that failed because the backend container
+    /// looked asleep/cold (connection refused, timeout, or 502/503/504). The UI
+    /// can observe this to show "waking up the server…" instead of a hard error.
+    var isWakingServer: Bool = false
+
     private var accessToken: String?
     private var refreshToken: String?
 
@@ -106,7 +111,7 @@ final class APIClient {
         if let token = accessToken {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await sendWithWakeupRetry(req)
         guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
             throw APIError.serverError((response as? HTTPURLResponse)?.statusCode ?? 0)
         }
@@ -140,7 +145,7 @@ final class APIClient {
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
         request.httpBody = body
 
-        let (respData, response) = try await URLSession.shared.data(for: request)
+        let (respData, response) = try await sendWithWakeupRetry(request)
         guard let http = response as? HTTPURLResponse else { throw APIError.noData }
         guard 200..<300 ~= http.statusCode else {
             throw APIError.serverError(http.statusCode)
@@ -167,17 +172,12 @@ final class APIClient {
         }
         if let body { req.httpBody = try encoder.encode(body) }
 
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await URLSession.shared.data(for: req)
-        } catch {
-            throw APIError.network(error)
-        }
+        let (data, response) = try await sendWithWakeupRetry(req)
 
         guard let http = response as? HTTPURLResponse else { throw APIError.noData }
 
         if http.statusCode == 401 && retry {
-            if let newToken = try? await doRefresh() {
+            if let newToken = try? await sharedRefresh() {
                 accessToken = newToken
                 return try await performRequest(path, method: method, body: body, retry: false)
             }
@@ -207,6 +207,23 @@ final class APIClient {
         }
     }
 
+    // Concurrent 401s (e.g. Home's summary/recent/budget fetched via `async let`) must not
+    // each call /auth/refresh independently — the backend rotates the refresh token on use,
+    // so a losing concurrent call gets an already-revoked token, fails, and used to trigger
+    // a `logout()` that wiped the tokens a winning sibling had just written. Coalesce into
+    // one in-flight refresh that everyone awaits.
+    private var refreshTask: Task<String, Error>?
+
+    private func sharedRefresh() async throws -> String {
+        if let existing = refreshTask {
+            return try await existing.value
+        }
+        let task = Task { try await doRefresh() }
+        refreshTask = task
+        defer { refreshTask = nil }
+        return try await task.value
+    }
+
     private func doRefresh() async throws -> String {
         guard let rt = refreshToken else { throw APIError.unauthorized }
 
@@ -217,7 +234,7 @@ final class APIClient {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try encoder.encode(RefreshBody(refreshToken: rt))
 
-        let (data, response) = try await URLSession.shared.data(for: req)
+        let (data, response) = try await sendWithWakeupRetry(req)
         guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
             throw APIError.unauthorized
         }
@@ -226,6 +243,57 @@ final class APIClient {
         Keychain.set(tokens.refreshToken, key: "refresh_token")
         refreshToken = tokens.refreshToken
         return tokens.accessToken
+    }
+
+    // MARK: - Cold-start resilience
+    //
+    // Railway containers that scaled to zero can take 20-40s to come back up.
+    // While cold, requests fail as connection-refused/timeout, or the edge
+    // proxy answers with 502/503/504 before the app is listening. Retry those
+    // specific failures with backoff instead of surfacing a raw error on the
+    // very first attempt.
+
+    private static let wakeupRetryDelays: [UInt64] = [2, 3, 5, 8, 8] // seconds; ~26s total
+
+    private func sendWithWakeupRetry(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        var lastError: Error = URLError(.cannotConnectToHost)
+
+        for attempt in 0...Self.wakeupRetryDelays.count {
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                if let http = response as? HTTPURLResponse,
+                   [502, 503, 504].contains(http.statusCode),
+                   attempt < Self.wakeupRetryDelays.count {
+                    lastError = APIError.serverError(http.statusCode)
+                } else {
+                    isWakingServer = false
+                    return (data, response)
+                }
+            } catch let error as URLError where Self.isColdStartError(error) {
+                lastError = error
+            } catch {
+                isWakingServer = false
+                throw APIError.network(error)
+            }
+
+            guard attempt < Self.wakeupRetryDelays.count else { break }
+            isWakingServer = true
+            try? await Task.sleep(nanoseconds: Self.wakeupRetryDelays[attempt] * 1_000_000_000)
+        }
+
+        isWakingServer = false
+        throw APIError.network(lastError)
+    }
+
+    private static func isColdStartError(_ error: URLError) -> Bool {
+        switch error.code {
+        case .cannotConnectToHost, .networkConnectionLost, .timedOut, .cannotFindHost:
+            return true
+        default:
+            // e.g. .notConnectedToInternet — a real local connectivity problem,
+            // retrying won't help and would just delay the error uselessly.
+            return false
+        }
     }
 }
 

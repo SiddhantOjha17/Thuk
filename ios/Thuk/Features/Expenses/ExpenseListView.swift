@@ -6,6 +6,7 @@ struct ExpenseListView: View {
     @State private var editingExpense: ExpenseResponse?
     @State private var deleteTarget: ExpenseResponse?
     @State private var showDeleteConfirm = false
+    @State private var searchDebounce: Task<Void, Never>?
 
     var body: some View {
         NavigationStack {
@@ -22,7 +23,7 @@ struct ExpenseListView: View {
                     // List
                     if viewModel.isLoading {
                         loadingState
-                    } else if viewModel.filtered.isEmpty {
+                    } else if viewModel.grouped.isEmpty {
                         emptyState
                     } else {
                         expenseList
@@ -48,6 +49,14 @@ struct ExpenseListView: View {
             Task { await viewModel.load() }
         }
         .onChange(of: viewModel.filter) { _, _ in Task { await viewModel.load() } }
+        .onChange(of: viewModel.searchText) { _, _ in
+            searchDebounce?.cancel()
+            searchDebounce = Task {
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled else { return }
+                await viewModel.load()
+            }
+        }
         .sheet(isPresented: $showAdd) {
             AddExpenseView(viewModel: viewModel)
         }
@@ -119,6 +128,7 @@ struct ExpenseListView: View {
                         TransactionRow(expense: expense)
                             .listRowBackground(Color.thukSurface)
                             .listRowInsets(.init(top: 10, leading: 16, bottom: 10, trailing: 16))
+                            .onAppear { viewModel.loadMoreIfNeeded(currentItem: expense) }
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 Button(role: .destructive) {
                                     deleteTarget = expense
@@ -142,6 +152,17 @@ struct ExpenseListView: View {
                         .foregroundStyle(Color.thukSecondary)
                         .listRowInsets(.init(top: 16, leading: 20, bottom: 4, trailing: 20))
                 }
+            }
+
+            if viewModel.isLoadingMore {
+                HStack {
+                    Spacer()
+                    ProgressView()
+                        .tint(Color.thukSecondary)
+                    Spacer()
+                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             }
         }
         .listStyle(.plain)

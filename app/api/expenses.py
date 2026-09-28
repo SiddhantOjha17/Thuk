@@ -23,11 +23,13 @@ async def list_expenses(
     start: date | None = Query(None),
     end: date | None = Query(None),
     category_id: uuid.UUID | None = Query(None),
+    q: str | None = Query(None, description="Free-text search over description and category name"),
     limit: int = Query(default=50, le=200),
+    offset: int = Query(default=0, ge=0),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """List expenses with optional filters."""
+    """List expenses with optional filters, newest first."""
     from app.database import crud
     expenses = await crud.get_user_expenses(
         db,
@@ -35,7 +37,9 @@ async def list_expenses(
         start_date=start,
         end_date=end,
         category_id=category_id,
+        search=q,
         limit=limit,
+        offset=offset,
     )
     return expenses
 

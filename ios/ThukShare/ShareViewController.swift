@@ -10,11 +10,17 @@ import SwiftUI
 import UniformTypeIdentifiers
 import Security
 
+// Change this alongside `kBaseURL` in the main app's APIClient.swift when the
+// backend environment changes — kept as a single named constant here (rather
+// than shared source) since this target deliberately has no dependency on
+// the main app target.
+private let kBaseURL = URL(string: "https://thuk-production.up.railway.app")!
+
 final class ShareViewController: UIViewController {
 
     // MARK: - State
 
-    private enum UploadState {
+    fileprivate enum UploadState {
         case uploading
         case success
         case error(String)
@@ -85,14 +91,25 @@ final class ShareViewController: UIViewController {
         }
 
         // 2. Read auth token from shared Keychain
-        guard let token = SharedKeychain.get("access_token") else {
+        guard var token = SharedKeychain.get("access_token") else {
             uploadState = .error("Not signed in to Thuk.")
             return
         }
 
-        // 3. Upload
+        // 3. Upload — access tokens expire after 15 min, so refresh once on 401
+        // (the main app refreshes on its own schedule, but the extension can run
+        // long after the app was last opened, so its cached token may be stale)
         do {
-            try await uploadImage(imageData, token: token)
+            do {
+                try await uploadImage(imageData, token: token)
+            } catch UploadError.unauthorized {
+                guard let refreshed = try? await refreshAccessToken() else {
+                    uploadState = .error("Session expired. Open Thuk to sign in again.")
+                    return
+                }
+                token = refreshed
+                try await uploadImage(imageData, token: token)
+            }
             uploadState = .success
             // Auto-dismiss after showing success briefly
             try? await Task.sleep(for: .seconds(1.5))
@@ -100,6 +117,32 @@ final class ShareViewController: UIViewController {
         } catch {
             uploadState = .error("Upload failed. Try again from the app.")
         }
+    }
+
+    private func refreshAccessToken() async throws -> String {
+        guard let refreshToken = SharedKeychain.get("refresh_token") else {
+            throw UploadError.unauthorized
+        }
+        let url = kBaseURL.appendingPathComponent("/auth/refresh")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(["refresh_token": refreshToken])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
+            throw UploadError.unauthorized
+        }
+        struct TokenResponse: Decodable {
+            let accessToken: String
+            let refreshToken: String
+        }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let tokens = try decoder.decode(TokenResponse.self, from: data)
+        SharedKeychain.set(tokens.accessToken, key: "access_token")
+        SharedKeychain.set(tokens.refreshToken, key: "refresh_token")
+        return tokens.accessToken
     }
 
     private func extractImageData() async -> Data? {
@@ -122,7 +165,7 @@ final class ShareViewController: UIViewController {
     }
 
     private func uploadImage(_ data: Data, token: String) async throws {
-        let url      = URL(string: "https://thuk-production.up.railway.app/api/chat/image")!
+        let url      = kBaseURL.appendingPathComponent("/api/chat/image")
         let boundary = UUID().uuidString
 
         var request        = URLRequest(url: url)
@@ -139,10 +182,14 @@ final class ShareViewController: UIViewController {
         request.httpBody = body
 
         let (_, response) = try await URLSession.shared.data(for: request)
-        guard let http = response as? HTTPURLResponse, 200..<300 ~= http.statusCode else {
-            throw URLError(.badServerResponse)
-        }
+        guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        if http.statusCode == 401 { throw UploadError.unauthorized }
+        guard 200..<300 ~= http.statusCode else { throw URLError(.badServerResponse) }
     }
+}
+
+private enum UploadError: Error {
+    case unauthorized
 }
 
 // MARK: - Gesture delegate (only dismiss on background tap, not card tap)
@@ -156,8 +203,8 @@ extension ShareViewController: UIGestureRecognizerDelegate {
 // MARK: - Shared Keychain (duplicated here so extension has no dependency on main app)
 
 private enum SharedKeychain {
-    private static let service     = "com.yourname.thuk"
-    private static let accessGroup = "group.com.yourname.thuk"
+    private static let service     = "com.siddhant.thuk"
+    private static let accessGroup = "group.com.siddhant.thuk"
 
     static func get(_ key: String) -> String? {
         let query: [String: Any] = [
@@ -172,6 +219,20 @@ private enum SharedKeychain {
         guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
               let data = result as? Data else { return nil }
         return String(data: data, encoding: .utf8)
+    }
+
+    static func set(_ value: String, key: String) {
+        let data = Data(value.utf8)
+        let query: [String: Any] = [
+            kSecClass as String:           kSecClassGenericPassword,
+            kSecAttrService as String:     service,
+            kSecAttrAccount as String:     key,
+            kSecAttrAccessGroup as String: accessGroup,
+        ]
+        SecItemDelete(query as CFDictionary)
+        var item = query
+        item[kSecValueData as String] = data
+        SecItemAdd(item as CFDictionary, nil)
     }
 }
 

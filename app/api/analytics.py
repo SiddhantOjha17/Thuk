@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import and_, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
@@ -68,6 +68,20 @@ async def get_summary(
         for row in cat_q.all()
     ]
 
+    # Flag other currencies present in-range so they aren't silently dropped
+    # from the total above (this endpoint only sums one currency at a time).
+    other_q = await db.execute(
+        select(Expense.currency)
+        .where(
+            Expense.user_id == user.id,
+            Expense.currency != currency,
+            Expense.expense_date >= start,
+            Expense.expense_date <= end,
+        )
+        .distinct()
+    )
+    other_currencies = [row[0] for row in other_q.all()]
+
     return AnalyticsSummary(
         total=total,
         currency=currency,
@@ -75,6 +89,7 @@ async def get_summary(
         by_category=by_category,
         start_date=start,
         end_date=end,
+        other_currencies=other_currencies,
     )
 
 

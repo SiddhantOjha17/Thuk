@@ -26,27 +26,24 @@ final class ExpensesViewModel {
     var filter: ExpenseFilter = .month
     var searchText: String = ""
     var isLoading = false
+    var isLoadingMore = false
     var errorMessage: String?
 
     private let api = APIClient.shared
+    private let pageSize = 50
+    private var offset = 0
+    private var hasMore = true
 
-    var filtered: [ExpenseResponse] {
-        guard searchText.isEmpty else {
-            return expenses.filter {
-                ($0.description ?? "").localizedCaseInsensitiveContains(searchText)
-                || ($0.category?.name ?? "").localizedCaseInsensitiveContains(searchText)
-            }
-        }
-        return expenses
-    }
-
-    /// Group expenses by date for sectioned list display
+    /// Group expenses by date for sectioned list display.
+    /// Search is applied server-side (see `fetchExpenses`) since the list is
+    /// paginated — filtering only what's loaded so far would silently miss
+    /// older matches the same way unbounded local loading used to.
     var grouped: [(key: String, expenses: [ExpenseResponse])] {
-        let dict = Dictionary(grouping: filtered) { $0.expenseDate.sectionHeader }
+        let dict = Dictionary(grouping: expenses) { $0.expenseDate.sectionHeader }
         return dict.map { ($0.key, $0.value) }
             .sorted { lhs, rhs in
-                let lDate = filtered.first { $0.expenseDate.sectionHeader == lhs.key }?.expenseDate ?? .now
-                let rDate = filtered.first { $0.expenseDate.sectionHeader == rhs.key }?.expenseDate ?? .now
+                let lDate = expenses.first { $0.expenseDate.sectionHeader == lhs.key }?.expenseDate ?? .now
+                let rDate = expenses.first { $0.expenseDate.sectionHeader == rhs.key }?.expenseDate ?? .now
                 return lDate > rDate
             }
     }
@@ -54,11 +51,35 @@ final class ExpensesViewModel {
     func load() async {
         isLoading = true
         errorMessage = nil
-        async let expResult  = fetchExpenses()
+        offset = 0
+        hasMore = true
+        async let expResult  = fetchExpenses(offset: 0)
         async let catResult  = fetchCategories()
-        expenses   = await expResult
+        let fetched = await expResult
+        expenses   = fetched
         categories = await catResult
+        offset     = fetched.count
+        hasMore    = fetched.count == pageSize
         isLoading  = false
+    }
+
+    /// Call from a row's `.onAppear` — fetches the next page once the user
+    /// scrolls near the end of what's currently loaded.
+    func loadMoreIfNeeded(currentItem: ExpenseResponse) {
+        guard hasMore, !isLoadingMore else { return }
+        guard let index = expenses.firstIndex(where: { $0.id == currentItem.id }) else { return }
+        guard index >= expenses.count - 5 else { return }
+        Task { await loadMore() }
+    }
+
+    private func loadMore() async {
+        guard hasMore, !isLoadingMore else { return }
+        isLoadingMore = true
+        let next = await fetchExpenses(offset: offset)
+        expenses.append(contentsOf: next)
+        offset  += next.count
+        hasMore  = next.count == pageSize
+        isLoadingMore = false
     }
 
     func delete(_ expense: ExpenseResponse) async {
@@ -107,10 +128,14 @@ final class ExpensesViewModel {
         }
     }
 
-    private func fetchExpenses() async -> [ExpenseResponse] {
-        var path = "/api/expenses?limit=200"
+    private func fetchExpenses(offset: Int) async -> [ExpenseResponse] {
+        var path = "/api/expenses?limit=\(pageSize)&offset=\(offset)"
         if let range = filter.dateRange {
             path += "&start=\(range.start)&end=\(range.end)"
+        }
+        if !searchText.isEmpty {
+            let encoded = searchText.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? searchText
+            path += "&q=\(encoded)"
         }
         return (try? await api.request(path)) ?? []
     }

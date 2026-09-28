@@ -113,6 +113,9 @@ struct AnalyticsSummary: Codable {
     let byCategory: [CategoryAmount]
     let startDate: Date
     let endDate: Date
+    /// Currencies with expenses in this range that aren't included in `total`
+    /// (the backend only totals one currency at a time).
+    let otherCurrencies: [String]
 }
 
 struct DailyAmount: Codable, Identifiable {

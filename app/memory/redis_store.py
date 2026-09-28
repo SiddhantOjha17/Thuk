@@ -22,12 +22,12 @@ class RedisStore:
 
     async def add_message(self, phone: str, role: str, content: str, ttl: int = 86400) -> None:
         """Add a message to the conversation history.
-        
+
         Keeps the last N messages and defaults to a 24-hour TTL.
         """
         key = f"thuk:hist:{phone}"
         msg = {"role": role, "content": content}
-        
+
         async with self.redis.pipeline(transaction=True) as pipe:
             pipe.rpush(key, json.dumps(msg))
             pipe.ltrim(key, -10, -1)  # Keep last 10 messages

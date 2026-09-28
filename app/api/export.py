@@ -2,8 +2,9 @@
 
 import csv
 import io
+from datetime import date
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,16 +19,24 @@ router = APIRouter()
 
 @router.get("/csv")
 async def export_csv(
+    start: date | None = Query(None),
+    end: date | None = Query(None),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Stream all expenses as a CSV file."""
-    result = await db.execute(
+    """Stream expenses as a CSV file, optionally restricted to a date range."""
+    query = (
         select(Expense)
         .options(selectinload(Expense.category))
         .where(Expense.user_id == user.id)
-        .order_by(Expense.expense_date.desc(), Expense.created_at.desc())
     )
+    if start:
+        query = query.where(Expense.expense_date >= start)
+    if end:
+        query = query.where(Expense.expense_date <= end)
+    query = query.order_by(Expense.expense_date.desc(), Expense.created_at.desc())
+
+    result = await db.execute(query)
     expenses = result.scalars().all()
 
     output = io.StringIO()

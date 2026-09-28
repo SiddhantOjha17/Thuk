@@ -2,9 +2,10 @@ import Foundation
 import Security
 
 /// Keychain wrapper for secure token storage.
-/// App Group access group is added only when the Share Extension target is configured.
+/// Uses the shared App Group access group so the ThukShare extension can read the login token.
 enum Keychain {
     private static let service = "com.siddhant.thuk"
+    private static let accessGroup = "group.com.siddhant.thuk"
 
     static func set(_ value: String, key: String) {
         let data = Data(value.utf8)
@@ -36,9 +37,10 @@ enum Keychain {
 
     private static func query(key: String) -> [String: Any] {
         [
-            kSecClass as String:       kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
+            kSecClass as String:           kSecClassGenericPassword,
+            kSecAttrService as String:     service,
+            kSecAttrAccount as String:     key,
+            kSecAttrAccessGroup as String: accessGroup,
         ]
     }
 }

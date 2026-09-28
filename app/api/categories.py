@@ -41,6 +41,7 @@ async def delete_category(
     db: AsyncSession = Depends(get_db),
 ):
     from sqlalchemy import select
+
     from app.database.models import Category
     result = await db.execute(
         select(Category).where(Category.id == category_id, Category.user_id == user.id)

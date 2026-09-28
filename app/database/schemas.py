@@ -156,6 +156,9 @@ class AnalyticsSummary(BaseModel):
     by_category: list[CategoryAmount]
     start_date: date
     end_date: date
+    # Currencies with expenses in this range that aren't included in `total` above
+    # (the summary only totals one currency at a time — see `currency`).
+    other_currencies: list[str] = Field(default_factory=list)
 
 
 class DailyAmount(BaseModel):

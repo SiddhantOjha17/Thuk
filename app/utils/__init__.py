@@ -1,7 +1,7 @@
 """Utilities package."""
 
-from app.utils.encryption import decrypt_api_key, encrypt_api_key
 from app.utils.currency import CURRENCY_SYMBOLS, detect_currency, parse_amount
+from app.utils.encryption import decrypt_api_key, encrypt_api_key
 
 __all__ = [
     "encrypt_api_key",

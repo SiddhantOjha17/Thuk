@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0"
-          toolsVersion="21701" targetRuntime="AppleCocoa" propertyAccessControl="none"
+          toolsVersion="21701" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none"
           useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES"
           colorMatched="YES" initialViewController="rnq-G4-Tpf">
     <scenes>
@@ -16,6 +16,7 @@
                         <color key="backgroundColor" systemColor="systemBackgroundColor"/>
                     </view>
                 </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="dfx-ez-CBM" userLabel="First Responder" sceneMemberID="firstResponder"/>
             </objects>
         </scene>
     </scenes>

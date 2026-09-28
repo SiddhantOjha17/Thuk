@@ -8,8 +8,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.database.models import Category, Debt, DebtDirection, Expense, Split, SourceType, User
-
+from app.database.models import Category, Debt, DebtDirection, Expense, SourceType, Split, User
 
 # ============== User / Auth Operations ==============
 
@@ -66,7 +65,6 @@ async def store_refresh_token(
 
 async def get_refresh_token(db: AsyncSession, token_hash: str):
     from app.database.models import RefreshToken
-    from datetime import UTC
     now = datetime.now(UTC)
     result = await db.execute(
         select(RefreshToken).where(
@@ -169,12 +167,15 @@ async def get_user_expenses(
     end_date: date | None = None,
     category_id: uuid.UUID | None = None,
     currency: str | None = None,
+    search: str | None = None,
     limit: int = 50,
+    offset: int = 0,
 ) -> list[Expense]:
-    """Get expenses for a user with optional filters."""
+    """Get expenses for a user with optional filters, newest first."""
     query = (
         select(Expense)
         .options(selectinload(Expense.category))
+        .outerjoin(Category, Expense.category_id == Category.id)
         .where(Expense.user_id == user_id)
     )
 
@@ -186,8 +187,17 @@ async def get_user_expenses(
         query = query.where(Expense.category_id == category_id)
     if currency:
         query = query.where(Expense.currency == currency)
+    if search:
+        like = f"%{search}%"
+        query = query.where(
+            Expense.description.ilike(like) | Category.name.ilike(like)
+        )
 
-    query = query.order_by(Expense.expense_date.desc()).limit(limit)
+    query = (
+        query.order_by(Expense.expense_date.desc(), Expense.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
 
     result = await db.execute(query)
     return list(result.scalars().all())

@@ -2,11 +2,8 @@
 
 from decimal import Decimal
 
-import pytest
-
 from app.processors.text_parser import Intent, get_instant_intent
-from app.utils.currency import parse_amount, detect_currency
-
+from app.utils.currency import detect_currency, parse_amount
 
 # ── get_instant_intent ────────────────────────────────────────────────────────
 

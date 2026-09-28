@@ -14,7 +14,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Database (Render provides postgresql://, we need to convert to asyncpg)
+    # Database (hosted providers commonly give postgresql://, we convert to asyncpg)
     database_url: str = "postgresql+asyncpg://user:password@localhost:5432/thuk"
 
     # LLM providers (operator-level keys)
@@ -45,22 +45,22 @@ class Settings(BaseSettings):
     @property
     def async_database_url(self) -> str:
         """Get async database URL for SQLAlchemy async engine.
-        
-        Render provides postgresql://, but we need postgresql+asyncpg://
+
+        Hosted providers give postgresql://, but we need postgresql+asyncpg://
         """
         url = self.database_url
         if url.startswith("postgresql://"):
             url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
         elif url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql+asyncpg://", 1)
-            
+
         # asyncpg does not support sslmode in the URL query string
         import urllib.parse
         parsed = urllib.parse.urlparse(url)
         query = dict(urllib.parse.parse_qsl(parsed.query))
         query.pop("sslmode", None)
         new_query = urllib.parse.urlencode(query)
-        
+
         return urllib.parse.urlunparse(
             (parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment)
         )

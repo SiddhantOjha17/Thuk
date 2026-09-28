@@ -2,11 +2,10 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import Depends
 
 from app.api import router as api_router
 from app.config import get_settings
@@ -32,10 +31,12 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# The only clients are the native iOS app and share extension, which use Bearer-token
+# auth and are never subject to browser CORS enforcement — no origin needs to be allowed.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # tighten for production if needed
-    allow_credentials=True,
+    allow_origins=[],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

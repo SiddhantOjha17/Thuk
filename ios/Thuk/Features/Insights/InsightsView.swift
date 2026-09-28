@@ -97,6 +97,12 @@ struct InsightsView: View {
                 }
             }
 
+            if let others = summary?.otherCurrencies, !others.isEmpty {
+                Text("Not included: \(others.joined(separator: ", ")) expenses this month")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.thukWarning)
+            }
+
             if let cats = summary?.byCategory, !cats.isEmpty {
                 Chart(cats) { item in
                     SectorMark(

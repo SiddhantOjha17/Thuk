@@ -3,7 +3,7 @@
 import asyncio
 import re
 import weakref
-from typing import Annotated, Literal
+from typing import Annotated
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph import END, StateGraph
@@ -14,10 +14,10 @@ from typing_extensions import TypedDict
 from app.agents.budget_agent import BudgetAgent
 from app.agents.category_agent import CategoryAgent
 from app.agents.expense_agent import ExpenseAgent
-from app.agents.split_agent import SplitAgent
-from app.agents.text2sql_agent import Text2SQLAgent
 from app.agents.export_agent import ExportAgent
 from app.agents.intent_classifier import IntentClassifier
+from app.agents.split_agent import SplitAgent
+from app.agents.text2sql_agent import Text2SQLAgent
 from app.memory.redis_store import store
 from app.processors.text_parser import Intent, ParsedMessage, get_instant_intent
 from app.utils.logging import get_logger
@@ -143,7 +143,7 @@ class SupervisorAgent:
         """Handle expense addition."""
         # We need history for contextual category detection
         history_dicts = await store.get_history(str(self.user.id), limit=6)
-        
+
         response = await self.expense_agent.add_expense(
             db=state["db"],
             user=state["user"],
@@ -151,13 +151,13 @@ class SupervisorAgent:
             source_type=state["source_type"],
             history=history_dicts,
         )
-        
+
         # Check budget warning if expense added
         if "Added expense" in response:
             warning = await self.budget_agent.check_budget(state["db"], state["user"])
             if warning:
                 response += f"\n\n{warning}"
-                
+
         state["response"] = response
         return state
 
@@ -168,13 +168,13 @@ class SupervisorAgent:
             user=state["user"],
             reply_text=state["user_message"],
         )
-        
+
         # Check budget warning if expense added
         if "Added expense" in response:
             warning = await self.budget_agent.check_budget(state["db"], state["user"])
             if warning:
                 response += f"\n\n{warning}"
-                
+
         state["response"] = response
         return state
 
@@ -224,12 +224,9 @@ class SupervisorAgent:
 
     async def handle_export(self, state: AgentState) -> AgentState:
         """Handle CSV export."""
-        from app.config import get_settings
-        settings = get_settings()
         response = await self.export_agent.export_and_get_url(
             db=state["db"],
             user=state["user"],
-            request_base_url=settings.webhook_base_url,
         )
         state["response"] = response
         return state
@@ -279,7 +276,7 @@ class SupervisorAgent:
     async def handle_category_add(self, state: AgentState) -> AgentState:
         """Handle category addition."""
         name = state["parsed"].extracted_category_name
-        
+
         if name:
             response = await self.category_agent.add_category(
                 db=state["db"],
@@ -332,7 +329,7 @@ class SupervisorAgent:
                 reclassified.description = msg
             state["parsed"] = reclassified
             return await self.handle_expense(state)
-        
+
         state["response"] = "I didn't quite understand that. Try something like 'Spent 500 on food' or type 'help' to see all commands."
         return state
 
@@ -388,7 +385,7 @@ class SupervisorAgent:
 
         # All agents end after processing
         for node in ["expense", "expense_delete", "expense_edit", "expense_resolve", "budget_set", "budget_check", "export",
-                     "query", "split", "debts", "settle", "category_add", 
+                     "query", "split", "debts", "settle", "category_add",
                      "category_list", "help", "clarify", "llm_fallback"]:
             workflow.add_edge(node, END)
 
@@ -432,13 +429,13 @@ class SupervisorAgent:
 
             # 30-second timeout for the entire agent workflow
             result = await asyncio.wait_for(self.app.ainvoke(initial_state), timeout=30.0)
-            
+
             response_text = result["response"]
-            
+
             # Save messages on success
             await store.add_message(str(self.user.id), "user", message)
             await store.add_message(str(self.user.id), "assistant", response_text)
-            
+
             return response_text
         except asyncio.TimeoutError:
             logger.error("Agent workflow timed out", user_id=str(self.user.id))

@@ -6,8 +6,8 @@ from alembic import context
 from sqlalchemy import create_engine, pool
 
 from app.config import get_settings
-from app.database.base import Base
 from app.database import models  # noqa: F401 - Import models to register them
+from app.database.base import Base
 
 # Alembic Config object
 config = context.config

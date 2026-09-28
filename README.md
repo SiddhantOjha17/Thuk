@@ -4,7 +4,7 @@ Personal expense tracker — iOS app + AI backend.
 Log expenses by typing, talking, or sharing a screenshot. Splits, budgets, analytics.
 
 **Stack:** FastAPI · LangGraph · Groq · Gemini · SwiftUI  
-**Hosting:** Koyeb (app) · Supabase (PostgreSQL) · Upstash (Redis) · **$0/month**
+**Hosting:** Railway (app) · Supabase (PostgreSQL) · Upstash (Redis) · **$0/month**
 
 ---
 
@@ -28,7 +28,7 @@ Before starting, create accounts on these (all free, no credit card):
 | Supabase | PostgreSQL database | supabase.com |
 | Upstash | Redis | upstash.com |
 | Groq | Primary LLM | console.groq.com |
-| Koyeb | App hosting | koyeb.com |
+| Railway | App hosting | railway.app |
 
 And these (free tier, but credit card may be needed for billing account):
 
@@ -144,30 +144,30 @@ Interactive docs at `http://localhost:8000/docs`
 
 ---
 
-## Part 3 — Backend: Deploy to Koyeb
+## Part 3 — Backend: Deploy to Railway
 
 ### 3.1 Push your code to GitHub
 
-Koyeb deploys from GitHub. Make sure your repo is pushed:
+Railway deploys from GitHub. Make sure your repo is pushed:
 ```bash
 git add .
 git commit -m "ready for deployment"
 git push origin main
 ```
 
-### 3.2 Create the Koyeb service
+### 3.2 Create the Railway service
 
-1. Go to **koyeb.com** → sign in with GitHub → **Create Service**
-2. **GitHub** → select your repo → branch: `main`
-3. Koyeb detects the `Dockerfile` automatically — leave build settings as-is
-4. Configure:
-   - **Port:** `8000`
-   - **Health check path:** `/health`
-   - **Instance:** Free (nano)
+1. Go to **railway.app** → sign in with GitHub → **New Project**
+2. **Deploy from GitHub repo** → select your repo → branch: `main`
+3. Railway detects the `Dockerfile` automatically — leave build settings as-is
+4. Under **Settings → Networking**, click **Generate Domain** to get a public URL and expose port `8000`
+5. Under **Settings → Deploy**, set the health check path to `/health`
+
+> **Note:** the free tier scales the container to zero after inactivity — the first request after idle can take 20-40s to wake back up. The iOS app already retries through this (see `APIClient.swift`'s `sendWithWakeupRetry`).
 
 ### 3.3 Set environment variables
 
-In the Koyeb dashboard under **Environment variables**, add all of these:
+In the Railway dashboard under **Variables**, add all of these:
 
 | Variable | Value |
 |----------|-------|
@@ -182,19 +182,19 @@ In the Koyeb dashboard under **Environment variables**, add all of these:
 
 ### 3.4 Deploy
 
-Click **Deploy**. First build takes ~3 minutes.
+Railway deploys automatically once the service is created. First build takes ~3 minutes.
 
-Once deployed, Koyeb gives you a URL like:
+Once deployed, Railway gives you a domain like:
 ```
-https://thuk-abc123.koyeb.app
+https://thuk-production.up.railway.app
 ```
 
-Go back to **Environment variables** → set `WEBHOOK_BASE_URL` to that URL → **Redeploy**.
+Go back to **Variables** → set `WEBHOOK_BASE_URL` to that URL → Railway redeploys automatically.
 
 ### 3.5 Verify
 
 ```bash
-curl https://thuk-abc123.koyeb.app/health
+curl https://thuk-production.up.railway.app/health
 # → {"status": "ok", "db": "ok"}
 ```
 
@@ -252,13 +252,18 @@ Then:
 
 ### 4.5 Point to your backend
 
-Open `ios/Thuk/Network/APIClient.swift` and update line 9:
+The backend URL is defined once per target — update both when it changes:
 
 ```swift
-private let kBaseURL = URL(string: "https://thuk-abc123.koyeb.app")!
+// ios/Thuk/Network/APIClient.swift
+private let kBaseURL = URL(string: "https://thuk-production.up.railway.app")!
+```
+```swift
+// ios/ThukShare/ShareViewController.swift
+private let kBaseURL = URL(string: "https://thuk-production.up.railway.app")!
 ```
 
-Replace `thuk-abc123.koyeb.app` with your actual Koyeb URL.
+Replace `thuk-production.up.railway.app` with your actual Railway domain in both files.
 
 ### 4.6 Add the Share Extension target
 
@@ -277,31 +282,28 @@ This lets the app appear in the iOS share sheet when you share any image.
 
 **For the Thuk target:**
 1. Select **Thuk** target → **Signing & Capabilities** → `+ Capability` → **App Groups**
-2. Click `+` → add: `group.com.yourname.thuk`
+2. Click `+` → add: `group.<your-bundle-id-prefix>.thuk` (e.g. `group.com.yourname.thuk`)
 
 **For the ThukShare target:**
-1. Select **ThukShare** target → same steps → add the same: `group.com.yourname.thuk`
+1. Select **ThukShare** target → same steps → add the same group identifier
 
-### 4.8 Update identifiers in two files
+### 4.8 Update identifiers to match your App Group
 
-Replace `yourname` with whatever you used in your bundle identifier throughout these files:
+Replace the placeholder identifiers with the group you just created:
 
-`ios/Thuk/Utilities/Keychain.swift` lines 8–9:
+`ios/Thuk/Utilities/Keychain.swift`:
 ```swift
-static let accessGroup = "group.com.yourname.thuk"
 private static let service = "com.yourname.thuk"
+private static let accessGroup = "group.com.yourname.thuk"
 ```
 
-`ios/ThukShare/ShareViewController.swift` lines 137–138:
+`ios/ThukShare/ShareViewController.swift` (in the `SharedKeychain` enum near the bottom of the file):
 ```swift
 private static let service     = "com.yourname.thuk"
 private static let accessGroup = "group.com.yourname.thuk"
 ```
 
-`ios/ThukShare/ShareViewController.swift` line ~172 (upload URL):
-```swift
-let url = URL(string: "https://thuk-abc123.koyeb.app/api/chat/image")!
-```
+The backend URL itself (`kBaseURL`) is set separately per §4.5 above.
 
 ---
 
@@ -375,7 +377,7 @@ Builds expire after 90 days. Upload a new one to refresh — no re-review needed
 
 ## Redeploying the backend
 
-Push to `main` → Koyeb auto-deploys in ~2 minutes. Migrations run automatically.
+Push to `main` → Railway auto-deploys in ~2 minutes. Migrations run automatically.
 
 ```bash
 git add .
@@ -401,6 +403,23 @@ API at `http://localhost:8000` · Docs at `http://localhost:8000/docs`
 
 ---
 
+## Running tests
+
+API-level tests need a real Postgres database (the models use Postgres-specific
+column types SQLite can't compile) — a separate one from whatever `.env` points
+at, so tests never touch real dev/prod data.
+
+```bash
+createdb thuk_test          # one-time, against your local Postgres
+pytest
+```
+
+Tests default to `postgresql+asyncpg://$(whoami)@localhost:5432/thuk_test` —
+override with `TEST_DATABASE_URL` if your local setup differs. CI sets it to
+point at the Postgres service container defined in `.github/workflows/ci.yml`.
+
+---
+
 ## Environment variables reference
 
 | Variable | Required | How to get |
@@ -413,7 +432,7 @@ API at `http://localhost:8000` · Docs at `http://localhost:8000/docs`
 | `OPENAI_API_KEY` | Yes | platform.openai.com → API keys |
 | `JWT_SECRET` | Yes | `python -c "import secrets; print(secrets.token_hex(32))"` |
 | `ENCRYPTION_KEY` | Yes | `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
-| `WEBHOOK_BASE_URL` | Yes | Your Koyeb app URL e.g. `https://thuk-abc123.koyeb.app` |
+| `WEBHOOK_BASE_URL` | Yes | Your Railway app URL e.g. `https://thuk-production.up.railway.app` |
 | `DEBUG` | No | `true` for verbose logs (default: `false`) |
 
 ---
@@ -425,7 +444,7 @@ iPhone app (SwiftUI)
     │
     │  REST + multipart
     ▼
-FastAPI (Koyeb)
+FastAPI (Railway)
     ├── Auth (JWT + bcrypt)
     ├── LangGraph supervisor
     │     ├── Intent classifier  → Groq llama-3.1-8b-instant

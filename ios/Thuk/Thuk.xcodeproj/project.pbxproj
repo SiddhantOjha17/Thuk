@@ -28,6 +28,9 @@
 		3573150130459C6A00AB490D /* TransactionRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 357314CF30459C6A00AB490D /* TransactionRow.swift */; };
 		3573150230459C6A00AB490D /* ExpensesViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 357314DA30459C6A00AB490D /* ExpensesViewModel.swift */; };
 		357315053045AFE800AB490D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 357315043045AFE800AB490D /* Assets.xcassets */; };
+		C8D3F1B4CD06CF26356BB4BE /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22A99F453D8002C1DB22A15C /* ShareViewController.swift */; };
+		B41029D56D2FFB6640EC71C5 /* MainInterface.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = EF5E2D2361124F3FFABBFF51 /* MainInterface.storyboard */; };
+		1840A2C3C3E0BC4D02F27F81 /* ThukShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 064F0C879CF790E742AF0FAF /* ThukShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -55,10 +58,21 @@
 		357314EA30459C6A00AB490D /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions.swift; sourceTree = "<group>"; };
 		357314EB30459C6A00AB490D /* Keychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Keychain.swift; sourceTree = "<group>"; };
 		357315043045AFE800AB490D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		22A99F453D8002C1DB22A15C /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		EF5E2D2361124F3FFABBFF51 /* MainInterface.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = MainInterface.storyboard; sourceTree = "<group>"; };
+		91686810F3819DDA82323EFC /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		064F0C879CF790E742AF0FAF /* ThukShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ThukShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		357314BB30459A0400AB490D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		79CB1B8516EA1F1D0F4B1590 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -79,6 +93,7 @@
 				357314E830459C6A00AB490D /* Thuk.xcodeproj */,
 				357314E930459C6A00AB490D /* ThukApp.swift */,
 				357314EC30459C6A00AB490D /* Utilities */,
+				E2D9D33CD0D07D7E72868855 /* ThukShare */,
 				357314BF30459A0400AB490D /* Products */,
 			);
 			sourceTree = "<group>";
@@ -87,8 +102,19 @@
 			isa = PBXGroup;
 			children = (
 				357314BE30459A0400AB490D /* thuk.app */,
+				064F0C879CF790E742AF0FAF /* ThukShare.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		E2D9D33CD0D07D7E72868855 /* ThukShare */ = {
+			isa = PBXGroup;
+			children = (
+				22A99F453D8002C1DB22A15C /* ShareViewController.swift */,
+				EF5E2D2361124F3FFABBFF51 /* MainInterface.storyboard */,
+				91686810F3819DDA82323EFC /* Info.plist */,
+			);
+			path = "../ThukShare";
 			sourceTree = "<group>";
 		};
 		357314D030459C6A00AB490D /* Components */ = {
@@ -209,10 +235,12 @@
 				357314BA30459A0400AB490D /* Sources */,
 				357314BB30459A0400AB490D /* Frameworks */,
 				357314BC30459A0400AB490D /* Resources */,
+				8D755D6252259C7723F337D5 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				5813770E27E0802B4F8EE567 /* PBXTargetDependency */,
 			);
 			name = thuk;
 			packageProductDependencies = (
@@ -220,6 +248,25 @@
 			productName = thuk;
 			productReference = 357314BE30459A0400AB490D /* thuk.app */;
 			productType = "com.apple.product-type.application";
+		};
+		A5A31644F7FB06E2280A5159 /* ThukShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C33A9813C9793D1B1F6E49E8 /* Build configuration list for PBXNativeTarget "ThukShare" */;
+			buildPhases = (
+				F2860EC64F5636419D24B3D9 /* Sources */,
+				79CB1B8516EA1F1D0F4B1590 /* Frameworks */,
+				1DDB71FDE8AA7D0852F7F663 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ThukShare;
+			packageProductDependencies = (
+			);
+			productName = ThukShare;
+			productReference = 064F0C879CF790E742AF0FAF /* ThukShare.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -232,6 +279,9 @@
 				LastUpgradeCheck = 2660;
 				TargetAttributes = {
 					357314BD30459A0400AB490D = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					A5A31644F7FB06E2280A5159 = {
 						CreatedOnToolsVersion = 26.6;
 					};
 				};
@@ -257,6 +307,7 @@
 			projectRoot = "";
 			targets = (
 				357314BD30459A0400AB490D /* thuk */,
+				A5A31644F7FB06E2280A5159 /* ThukShare */,
 			);
 		};
 /* End PBXProject section */
@@ -267,6 +318,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				357315053045AFE800AB490D /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		1DDB71FDE8AA7D0852F7F663 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B41029D56D2FFB6640EC71C5 /* MainInterface.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -300,7 +359,47 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		F2860EC64F5636419D24B3D9 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C8D3F1B4CD06CF26356BB4BE /* ShareViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXContainerItemProxy section */
+		DD42FDA8532DF23806DEA642 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 357314B630459A0400AB490D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A5A31644F7FB06E2280A5159;
+			remoteInfo = ThukShare;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		8D755D6252259C7723F337D5 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				1840A2C3C3E0BC4D02F27F81 /* ThukShare.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		5813770E27E0802B4F8EE567 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A5A31644F7FB06E2280A5159 /* ThukShare */;
+			targetProxy = DD42FDA8532DF23806DEA642 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		357314C730459A0600AB490D /* Debug */ = {
@@ -428,6 +527,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				CODE_SIGN_ENTITLEMENTS = Thuk.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = F58QR5MF7F;
@@ -466,6 +566,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				CODE_SIGN_ENTITLEMENTS = Thuk.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = F58QR5MF7F;
@@ -498,6 +599,52 @@
 			};
 			name = Release;
 		};
+		DE64ABFF27457B422947952A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "../ThukShare/ThukShare.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = F58QR5MF7F;
+				INFOPLIST_FILE = "../ThukShare/Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.siddhant.thuk.ThukShare;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		F30BDA5667D152FF374E44D3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "../ThukShare/ThukShare.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = F58QR5MF7F;
+				INFOPLIST_FILE = "../ThukShare/Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.siddhant.thuk.ThukShare;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -515,6 +662,15 @@
 			buildConfigurations = (
 				357314CA30459A0600AB490D /* Debug */,
 				357314CB30459A0600AB490D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C33A9813C9793D1B1F6E49E8 /* Build configuration list for PBXNativeTarget "ThukShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DE64ABFF27457B422947952A /* Debug */,
+				F30BDA5667D152FF374E44D3 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

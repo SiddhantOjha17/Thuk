@@ -1,10 +1,6 @@
 """Expense Agent - handles adding, updating, and deleting expenses."""
 
-from datetime import date
-from decimal import Decimal
-
 import json
-import re
 from datetime import date
 from decimal import Decimal
 
@@ -14,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import crud
 from app.database.models import SourceType
-from app.llm.factory import get_llm, ModelTask
+from app.llm.factory import ModelTask, get_llm
 from app.memory.redis_store import store
 from app.processors.text_parser import ParsedMessage
 from app.utils.currency import format_amount
@@ -25,7 +21,7 @@ logger = get_logger(__name__)
 class CategoryDetectionResult(BaseModel):
     """Structured output for category detection."""
     category_name: str | None = Field(
-        None, 
+        None,
         description="The best matching category name from the allowed list, or None if it should be 'Other'."
     )
     short_description: str | None = Field(
@@ -65,20 +61,20 @@ class ExpenseAgent:
 Rules:
 - If the expense clearly fits a category, return that category name exactly as listed.
 - If unsure or it could fit multiple, return null/None for the category.
-- Also extract a concise `short_description` (1-3 words) directly describing the transaction (e.g., 'football turf', 'uber ride'). 
+- Also extract a concise `short_description` (1-3 words) directly describing the transaction (e.g., 'football turf', 'uber ride').
 - Use the conversation history for context if the description is ambiguous.
 - Your output should be purely categorical and descriptive.
 """
 
             messages = [SystemMessage(content=system_prompt)]
-            
+
             if history:
                 for msg in history:
                     if msg["role"] == "user":
                         messages.append(HumanMessage(content=msg["content"]))
                     else:
                         messages.append(AIMessage(content=msg["content"]))
-                        
+
             messages.append(HumanMessage(content=f"Expense description: {description}"))
 
             result: CategoryDetectionResult = await llm.ainvoke(messages)
@@ -157,7 +153,7 @@ Rules:
             return f"Couldn't categorize {amount_str}{desc_label}. What is this for?\n\n{cats_text}"
 
         # Create the expense
-        expense = await crud.create_expense(
+        await crud.create_expense(
             db=db,
             user_id=user.id,
             amount=parsed.amount,
@@ -189,20 +185,20 @@ Rules:
         """
         # Check if already confirmed
         is_pending = await store.get_flag(str(user.id), "pending_delete")
-        
+
         if not is_pending:
             # First step: get the latest expense and ask for confirmation
             expenses = await crud.get_user_expenses(db, user.id, limit=1)
             if not expenses:
                 return "No expenses found to delete."
-                
+
             expense = expenses[0]
             amount_str = format_amount(expense.amount, expense.currency)
             desc_str = f" for '{expense.description}'" if expense.description else ""
-            
+
             # Set flag for 60 seconds
             await store.set_flag(str(user.id), "pending_delete", True, ttl=60)
-            
+
             return f"Are you sure you want to delete the expense of {amount_str}{desc_str}? Reply 'yes' to confirm."
 
         # Second step: actually delete
@@ -250,7 +246,7 @@ Rules:
         curr_cat = expense.category.name if expense.category else 'Others'
 
         prompt = f"""Apply this exact user instruction: '{instructions}' to the user's most recent expense object.
-        
+
 Current Amount: {expense.amount}
 Current Description: {expense.description}
 Current Category: {curr_cat}
@@ -265,18 +261,19 @@ RULES:
         try:
             patch: ExpensePatch = await llm.ainvoke([HumanMessage(content=prompt)])
         except Exception as e:
-            return f"I couldn't process the edit instruction: {str(e)}"
+            logger.error("LLM edit instruction parsing failed", error=str(e))
+            return "I couldn't process that edit instruction. Try being more specific, e.g. 'change the amount to 500'."
 
         # Update fields dynamically
         changes = []
         if patch.new_amount is not None:
             expense.amount = Decimal(str(patch.new_amount))
             changes.append(f"amount to {patch.new_amount}")
-            
+
         if patch.new_description is not None:
             expense.description = patch.new_description
             changes.append(f"description to '{patch.new_description}'")
-            
+
         if patch.new_category_name is not None and patch.new_category_name.lower() != curr_cat.lower():
             if patch.new_category_name.lower() == "others":
                 expense.category_id = None
@@ -306,7 +303,7 @@ RULES:
             llm = get_llm(ModelTask.FAST).with_structured_output(ResolutionResult)
 
             cat_str = ", ".join(categories)
-            prompt = f"""The user is answering a prompt to select a category. 
+            prompt = f"""The user is answering a prompt to select a category.
 Available existing categories: {cat_str}
 Number mappings: 1 to N map to the list above in order, where N+1 maps to 'Others'.
 User reply: '{reply_text}'
@@ -336,7 +333,7 @@ Only return the final string."""
         cat_names = [c.name for c in user_categories]
 
         mapped = await self._resolve_category_reply(reply_text, cat_names)
-        
+
         category = None
         if mapped != "Others":
             category = await crud.get_category_by_name(db, user.id, mapped)
@@ -359,10 +356,10 @@ Only return the final string."""
             source_type=SourceType(pending_data.get("source_type", "text")),
             expense_date=expense_date,
         )
-        
+
         # Clear the flag
         await store.delete_flag(str(user.id), "pending_expense")
-        
+
         amount_str = format_amount(Decimal(pending_data["amount"]), pending_data["currency"])
         cat_str = f" ({category.name})" if category else " (Others)"
         return f"Added expense: {amount_str}{cat_str}"

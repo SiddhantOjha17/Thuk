@@ -37,6 +37,11 @@ ENV/
 *.swo
 .DS_Store
 
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+
 # Testing
 .pytest_cache/
 .coverage

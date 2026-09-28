@@ -4,10 +4,10 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
-from app.llm.factory import get_llm, ModelTask
+from app.llm.factory import ModelTask, get_llm
 from app.processors.text_parser import Intent, ParsedMessage
 from app.utils.logging import get_logger
 
@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 
 class IntentClassificationResult(BaseModel):
     """Structured output from the LLM classifier."""
-    
+
     intent: Intent = Field(
         description="The primary intent of the user's message. Use UNKNOWN if it doesn't match any supported intent."
     )
@@ -60,7 +60,6 @@ class IntentClassifier:
 
     def __init__(self):
         """Initialize using the operator-level LLM factory."""
-        from app.llm.factory import get_llm, ModelTask
         # Fast 8B model is plenty for intent routing
         self.llm = get_llm(ModelTask.FAST).with_structured_output(IntentClassificationResult)
 
@@ -74,7 +73,7 @@ class IntentClassifier:
         Returns:
             ParsedMessage with all extracted fields
         """
-        from app.utils.currency import parse_amount, detect_currency
+        from app.utils.currency import detect_currency, parse_amount
 
         today = date.today().isoformat()
 

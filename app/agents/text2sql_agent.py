@@ -1,15 +1,13 @@
 """Text-to-SQL Agent for natural language data querying."""
 
-from datetime import date
-from typing import Any
-
 import re
+from datetime import date
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.llm.factory import content_to_text, get_llm, get_response_llm, ModelTask
+from app.llm.factory import ModelTask, content_to_text, get_llm, get_response_llm
 from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -35,7 +33,7 @@ class Text2SQLAgent:
     async def _generate_sql(self, query: str) -> str:
         """Use LLM to generate PostgreSQL query."""
         today = date.today().isoformat()
-        
+
         schema = """
 Table: expenses
 Columns:
@@ -81,7 +79,7 @@ CRITICAL RULES:
         try:
             # 1. Generate SQL
             sql_query = await self._generate_sql(natural_query)
-            
+
             # Security: only SELECT is allowed; block any destructive keywords
             if not sql_query.lower().lstrip().startswith("select"):
                 logger.warning("Prevented non-SELECT query", sql=sql_query)
@@ -93,14 +91,14 @@ CRITICAL RULES:
             # 2. Execute SQL securely with mapped parameter
             stmt = text(sql_query)
             result_proxy = await db.execute(stmt, {"user_id": self.user.id})
-            
+
             # Ensure safe conversion of objects like decimals/dates to string
             rows = result_proxy.fetchall()
-            
+
             # Convert row tuples to list of dicts for LLM ingestion
             keys = result_proxy.keys()
             results_list = [dict(zip(keys, row)) for row in rows]
-            
+
             # 3. Format results beautifully using LLM
             format_prompt = f"""You are Thuk's friendly analytics voice.
 The user originally asked: "{natural_query}"
@@ -109,8 +107,8 @@ I executed a SQL query to get the raw data from their personal database.
 Here are the raw JSON results:
 {results_list}
 
-Please formulate a very brief, friendly, perfectly formatted WhatsApp message responding to their query based ON THIS EXACT DATA. 
-- Do not use emojis. 
+Please formulate a very brief, friendly, perfectly formatted WhatsApp message responding to their query based ON THIS EXACT DATA.
+- Do not use emojis.
 - Format numbers beautifully (e.g. 1500 -> 1,500).
 - If the result list is empty, kindly state that no records match.
 - Use bullet points if there are multiple rows.

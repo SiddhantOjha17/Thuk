@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.dependencies import get_current_user
 from app.database import crud
 from app.database.base import get_db
-from app.database.models import DebtDirection, User
+from app.database.models import User
 from app.database.schemas import DebtResponse, DebtSummaryResponse
 
 router = APIRouter()

@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api import auth, chat, expenses, categories, budget, debts, analytics, export, me
+from app.api import analytics, auth, budget, categories, chat, debts, expenses, export, me
 
 router = APIRouter()
 router.include_router(auth.router, prefix="/auth", tags=["auth"])

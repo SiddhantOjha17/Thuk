@@ -2,16 +2,13 @@
 
 import logging
 import sys
-from typing import Any
 
 import structlog
-
-from app.config import get_settings
 
 
 def setup_logging(debug: bool = False) -> None:
     """Initialize structured logging config.
-    
+
     Call this once at application startup.
     """
     if debug:
