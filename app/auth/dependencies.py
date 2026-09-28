@@ -57,4 +57,11 @@ async def get_current_user(
             detail="User not found",
         )
 
+    # Materialize any due recurring expenses before the request sees the user's
+    # data, so every endpoint (chat, expenses, budget, analytics...) is
+    # consistent — see crud.materialize_due_recurring_expenses for why this
+    # runs lazily here instead of via a standing scheduler.
+    from app.database import crud
+    await crud.materialize_due_recurring_expenses(db, user.id)
+
     return user

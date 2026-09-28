@@ -2,7 +2,18 @@
 
 from fastapi import APIRouter
 
-from app.api import analytics, auth, budget, categories, chat, debts, expenses, export, me
+from app.api import (
+    analytics,
+    auth,
+    budget,
+    categories,
+    chat,
+    debts,
+    expenses,
+    export,
+    me,
+    recurring,
+)
 
 router = APIRouter()
 router.include_router(auth.router, prefix="/auth", tags=["auth"])
@@ -14,3 +25,4 @@ router.include_router(budget.router, prefix="/api/budget", tags=["budget"])
 router.include_router(debts.router, prefix="/api/debts", tags=["debts"])
 router.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
 router.include_router(export.router, prefix="/api/export", tags=["export"])
+router.include_router(recurring.router, prefix="/api/recurring", tags=["recurring"])

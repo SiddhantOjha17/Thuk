@@ -16,6 +16,7 @@ from app.agents.category_agent import CategoryAgent
 from app.agents.expense_agent import ExpenseAgent
 from app.agents.export_agent import ExportAgent
 from app.agents.intent_classifier import IntentClassifier
+from app.agents.recurring_agent import RecurringAgent
 from app.agents.split_agent import SplitAgent
 from app.agents.text2sql_agent import Text2SQLAgent
 from app.memory.redis_store import store
@@ -36,6 +37,7 @@ def _help_message() -> str:
         "Delete: \"delete last expense\"\n"
         "Budget: \"set budget 10000\", \"check my budget\"\n"
         "Debts: \"who owes me?\", \"Rahul paid me back\"\n"
+        "Recurring: \"add netflix 500 monthly\", \"my subscriptions\", \"stop netflix\"\n"
         "Export: \"export my expenses\""
     )
 
@@ -69,6 +71,7 @@ class SupervisorAgent:
         self.category_agent = CategoryAgent()
         self.budget_agent = BudgetAgent()
         self.export_agent = ExportAgent()
+        self.recurring_agent = RecurringAgent()
         self.intent_classifier = IntentClassifier()
         # Compile LangGraph workflow once and reuse for this user
         self.app = self.build_graph().compile()
@@ -131,6 +134,9 @@ class SupervisorAgent:
             Intent.RESOLVE_CATEGORY: "expense_resolve",
             Intent.SET_BUDGET: "budget_set",
             Intent.CHECK_BUDGET: "budget_check",
+            Intent.ADD_RECURRING: "recurring_add",
+            Intent.LIST_RECURRING: "recurring_list",
+            Intent.STOP_RECURRING: "recurring_stop",
             Intent.EXPORT_EXPENSES: "export",
             Intent.HELP: "help",
             Intent.CLARIFY: "clarify",
@@ -218,6 +224,40 @@ class SupervisorAgent:
         response = await self.budget_agent.get_budget_status(
             db=state["db"],
             user=state["user"],
+        )
+        state["response"] = response
+        return state
+
+    async def handle_recurring_add(self, state: AgentState) -> AgentState:
+        """Handle setting up a new recurring expense."""
+        parsed = state["parsed"]
+        response = await self.recurring_agent.add_recurring(
+            db=state["db"],
+            user=state["user"],
+            amount=parsed.amount,
+            currency=parsed.currency,
+            description=parsed.description,
+            cadence=parsed.cadence,
+        )
+        state["response"] = response
+        return state
+
+    async def handle_recurring_list(self, state: AgentState) -> AgentState:
+        """Handle listing recurring expenses."""
+        response = await self.recurring_agent.list_recurring(
+            db=state["db"],
+            user=state["user"],
+        )
+        state["response"] = response
+        return state
+
+    async def handle_recurring_stop(self, state: AgentState) -> AgentState:
+        """Handle stopping a recurring expense."""
+        parsed = state["parsed"]
+        response = await self.recurring_agent.stop_recurring(
+            db=state["db"],
+            user=state["user"],
+            name_hint=parsed.description,
         )
         state["response"] = response
         return state
@@ -345,6 +385,9 @@ class SupervisorAgent:
         workflow.add_node("expense_resolve", self.handle_expense_category_resolve)
         workflow.add_node("budget_set", self.handle_budget_set)
         workflow.add_node("budget_check", self.handle_budget_check)
+        workflow.add_node("recurring_add", self.handle_recurring_add)
+        workflow.add_node("recurring_list", self.handle_recurring_list)
+        workflow.add_node("recurring_stop", self.handle_recurring_stop)
         workflow.add_node("export", self.handle_export)
         workflow.add_node("query", self.handle_query)
         workflow.add_node("split", self.handle_split)
@@ -370,6 +413,9 @@ class SupervisorAgent:
                 "expense_resolve": "expense_resolve",
                 "budget_set": "budget_set",
                 "budget_check": "budget_check",
+                "recurring_add": "recurring_add",
+                "recurring_list": "recurring_list",
+                "recurring_stop": "recurring_stop",
                 "export": "export",
                 "query": "query",
                 "split": "split",
@@ -386,7 +432,8 @@ class SupervisorAgent:
         # All agents end after processing
         for node in ["expense", "expense_delete", "expense_edit", "expense_resolve", "budget_set", "budget_check", "export",
                      "query", "split", "debts", "settle", "category_add",
-                     "category_list", "help", "clarify", "llm_fallback"]:
+                     "category_list", "help", "clarify", "llm_fallback",
+                     "recurring_add", "recurring_list", "recurring_stop"]:
             workflow.add_edge(node, END)
 
         return workflow

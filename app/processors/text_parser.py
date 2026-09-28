@@ -38,6 +38,9 @@ class Intent(str, Enum):
     EDIT_EXPENSE = "edit_expense"
     SET_BUDGET = "set_budget"
     CHECK_BUDGET = "check_budget"
+    ADD_RECURRING = "add_recurring"
+    LIST_RECURRING = "list_recurring"
+    STOP_RECURRING = "stop_recurring"
     EXPORT_EXPENSES = "export_expenses"
     RESOLVE_CATEGORY = "resolve_category"
     CLARIFY = "clarify"
@@ -61,6 +64,7 @@ class ParsedMessage:
     time_range: str | None = None
     extracted_category_name: str | None = None
     edit_instructions: str | None = None
+    cadence: str | None = None  # "weekly" | "monthly" | "yearly" — for recurring expenses
     raw_text: str = ""
 
 
@@ -81,6 +85,8 @@ _INSTANT_ROUTES: list[tuple[re.Pattern, Intent]] = [
     (re.compile(r"^(check\s+)?(my\s+)?budget(\s+status)?$", re.IGNORECASE), Intent.CHECK_BUDGET),
     # set budget <amount>  — only when a clear number follows
     (re.compile(r"^set\s+budget\s+\d", re.IGNORECASE), Intent.SET_BUDGET),
+    # list / show recurring expenses
+    (re.compile(r"^(show|list|my)\s+(recurring(\s+expenses)?|subscriptions?)$", re.IGNORECASE), Intent.LIST_RECURRING),
 ]
 
 

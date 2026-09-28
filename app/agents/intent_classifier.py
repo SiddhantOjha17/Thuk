@@ -50,6 +50,9 @@ class IntentClassificationResult(BaseModel):
     edit_instructions: str | None = Field(
         None, description="If the user is asking to EDIT an expense, transcribe their specific edit instructions clearly (e.g., 'Shift it from shopping to groceries')."
     )
+    cadence: str | None = Field(
+        None, description="For ADD_RECURRING: how often it repeats — one of 'weekly', 'monthly', 'yearly'. Default to 'monthly' if unclear."
+    )
     clarification_question: str | None = Field(
         None, description="If the intent strongly requires CLARIFY, what exact question should we ask the user?"
     )
@@ -114,6 +117,9 @@ ROUTING RULES:
 - "delete", "remove", "undo" → DELETE_EXPENSE
 - "set budget [amount]" → SET_BUDGET
 - "check budget", "budget status" → CHECK_BUDGET
+- "add [name] [amount] every month/weekly/yearly", "[amount] [name] monthly", "recurring", "subscription" with an amount → ADD_RECURRING (extract description=name, amount, cadence)
+- "show/list my recurring expenses", "my subscriptions" → LIST_RECURRING
+- "stop/cancel/remove [name] subscription", "stop my recurring [name]" → STOP_RECURRING (extract description=name)
 - "export", "download", "CSV" → EXPORT_EXPENSES
 - "help" → HELP
 - CLARIFY: ONLY if there is truly NO amount and intent is completely unclear
@@ -135,6 +141,7 @@ FOR AMOUNTS:
 
 SUPPORTED INTENTS: ADD_EXPENSE, QUERY_EXPENSES, EDIT_EXPENSE, SPLIT_PAYMENT, CHECK_DEBTS,
 SETTLE_DEBT, ADD_CATEGORY, LIST_CATEGORIES, DELETE_EXPENSE, SET_BUDGET, CHECK_BUDGET,
+ADD_RECURRING, LIST_RECURRING, STOP_RECURRING,
 EXPORT_EXPENSES, RESOLVE_CATEGORY, HELP, CLARIFY, UNKNOWN"""
 
         messages = [SystemMessage(content=system_prompt)]
@@ -169,6 +176,7 @@ EXPORT_EXPENSES, RESOLVE_CATEGORY, HELP, CLARIFY, UNKNOWN"""
                 time_range=result.time_range,
                 extracted_category_name=result.extracted_category_name,
                 edit_instructions=result.edit_instructions,
+                cadence=result.cadence,
                 raw_text=result.clarification_question if result.intent == Intent.CLARIFY else text,
             )
         except Exception as e:

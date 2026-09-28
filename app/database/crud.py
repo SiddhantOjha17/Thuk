@@ -1,14 +1,24 @@
 """Database CRUD operations."""
 
+import calendar
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.database.models import Category, Debt, DebtDirection, Expense, SourceType, Split, User
+from app.database.models import (
+    Category,
+    Debt,
+    DebtDirection,
+    Expense,
+    RecurringExpense,
+    SourceType,
+    Split,
+    User,
+)
 
 # ============== User / Auth Operations ==============
 
@@ -472,3 +482,136 @@ async def settle_debts_by_person(
         count += 1
     await db.flush()
     return count
+
+
+# ============== Recurring Expense Operations ==============
+
+VALID_CADENCES = ("weekly", "monthly", "yearly")
+
+
+def _advance_date(d: date, cadence: str) -> date:
+    """Move a date forward by one cadence period, clamping day-of-month overflow
+    (e.g. rent due the 31st advances to the last day of a shorter next month)."""
+    if cadence == "weekly":
+        return d + timedelta(days=7)
+    if cadence == "yearly":
+        try:
+            return d.replace(year=d.year + 1)
+        except ValueError:
+            # Feb 29 on a non-leap year
+            return d.replace(year=d.year + 1, day=28)
+    # monthly (default/fallback)
+    month = d.month + 1
+    year = d.year + (month - 1) // 12
+    month = ((month - 1) % 12) + 1
+    last_day = calendar.monthrange(year, month)[1]
+    return date(year, month, min(d.day, last_day))
+
+
+async def create_recurring_expense(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    amount: Decimal,
+    currency: str,
+    description: str,
+    cadence: str,
+    category_id: uuid.UUID | None = None,
+    start_date: date | None = None,
+) -> RecurringExpense:
+    """Create a new recurring expense rule, starting from `start_date` (default today)."""
+    recurring = RecurringExpense(
+        user_id=user_id,
+        amount=amount,
+        currency=currency,
+        description=description,
+        cadence=cadence if cadence in VALID_CADENCES else "monthly",
+        category_id=category_id,
+        next_run_date=start_date or date.today(),
+        is_active=True,
+    )
+    db.add(recurring)
+    await db.flush()
+    return recurring
+
+
+async def get_user_recurring_expenses(
+    db: AsyncSession, user_id: uuid.UUID, active_only: bool = True
+) -> list[RecurringExpense]:
+    """List a user's recurring expense rules."""
+    query = select(RecurringExpense).where(RecurringExpense.user_id == user_id)
+    if active_only:
+        query = query.where(RecurringExpense.is_active == True)  # noqa: E712
+    query = query.order_by(RecurringExpense.description)
+    result = await db.execute(query)
+    return list(result.scalars().all())
+
+
+async def find_recurring_expenses_by_description(
+    db: AsyncSession, user_id: uuid.UUID, name: str
+) -> list[RecurringExpense]:
+    """Fuzzy-match active recurring expenses by description (e.g. 'netflix' -> 'Netflix')."""
+    result = await db.execute(
+        select(RecurringExpense).where(
+            RecurringExpense.user_id == user_id,
+            RecurringExpense.is_active == True,  # noqa: E712
+            RecurringExpense.description.ilike(f"%{name}%"),
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def deactivate_recurring_expense(
+    db: AsyncSession, recurring_id: uuid.UUID
+) -> RecurringExpense | None:
+    """Stop a recurring expense (soft delete — keeps history of what it already created)."""
+    result = await db.execute(
+        select(RecurringExpense).where(RecurringExpense.id == recurring_id)
+    )
+    recurring = result.scalar_one_or_none()
+    if recurring:
+        recurring.is_active = False
+        await db.flush()
+    return recurring
+
+
+async def materialize_due_recurring_expenses(
+    db: AsyncSession, user_id: uuid.UUID
+) -> list[Expense]:
+    """Create real Expense rows for every period a recurring expense has missed
+    since it was last materialized, then advance `next_run_date` past today.
+
+    Called lazily from `get_current_user` on every authenticated request rather
+    than via a standing scheduler, since free-tier hosting scales to zero and
+    would kill a scheduler anyway.
+    """
+    today = date.today()
+    result = await db.execute(
+        select(RecurringExpense).where(
+            RecurringExpense.user_id == user_id,
+            RecurringExpense.is_active == True,  # noqa: E712
+            RecurringExpense.next_run_date <= today,
+        )
+    )
+    due = list(result.scalars().all())
+    created: list[Expense] = []
+    for recurring in due:
+        # Safety cap: a malformed cadence should never loop indefinitely.
+        for _ in range(24):
+            if recurring.next_run_date > today:
+                break
+            expense = await create_expense(
+                db=db,
+                user_id=user_id,
+                amount=recurring.amount,
+                currency=recurring.currency,
+                description=recurring.description,
+                category_id=recurring.category_id,
+                source_type=SourceType.TEXT,
+                expense_date=recurring.next_run_date,
+                metadata={"recurring_expense_id": str(recurring.id)},
+            )
+            created.append(expense)
+            recurring.next_run_date = _advance_date(recurring.next_run_date, recurring.cadence)
+    if created:
+        await db.flush()
+    return created

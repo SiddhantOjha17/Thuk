@@ -103,6 +103,30 @@ class ExpenseResponse(BaseModel):
     category: CategoryResponse | None = None
 
 
+# ── Recurring Expense ─────────────────────────────────────────────────────────
+
+
+class RecurringExpenseCreate(BaseModel):
+    amount: Decimal = Field(gt=0)
+    currency: str = Field(default="INR", max_length=3)
+    description: str = Field(min_length=1)
+    cadence: str = Field(default="monthly", pattern="^(weekly|monthly|yearly)$")
+    category_id: uuid.UUID | None = None
+
+
+class RecurringExpenseResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    amount: DecimalNumber
+    currency: str
+    description: str
+    cadence: str
+    next_run_date: date
+    is_active: bool
+    category: CategoryResponse | None = None
+
+
 # ── Budget ────────────────────────────────────────────────────────────────────
 
 
