@@ -18,6 +18,9 @@ from app.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
+_VALID_PAYMENT_METHODS = ("cash", "card", "upi", "bank_transfer", "other")
+
+
 class CategoryDetectionResult(BaseModel):
     """Structured output for category detection."""
     category_name: str | None = Field(
@@ -117,6 +120,9 @@ Rules:
         if parsed.amount is None:
             return "I couldn't detect an amount. Please try again with a clear amount like '500' or '$20'."
 
+        payment_method = parsed.payment_method if parsed.payment_method in _VALID_PAYMENT_METHODS else None
+        tags = parsed.tags or []
+
         # Fetch categories once — used for both LLM detection and fallback prompt
         user_categories = await crud.get_user_categories(db, user.id)
         category_names = [c.name for c in user_categories]
@@ -141,6 +147,8 @@ Rules:
                 "description": short_desc,
                 "expense_date": parsed.expense_date.isoformat() if parsed.expense_date else None,
                 "source_type": source_type,
+                "payment_method": payment_method,
+                "tags": tags,
             }
             await store.set_flag(str(user.id), "pending_expense", json.dumps(pending_data), ttl=300)
 
@@ -162,6 +170,8 @@ Rules:
             category_id=category.id if category else None,
             source_type=SourceType(source_type),
             expense_date=parsed.expense_date or date.today(),
+            payment_method=payment_method,
+            tags=tags,
         )
 
         # Format response
@@ -237,6 +247,8 @@ Rules:
             new_amount: float | None = Field(None, description="The updated numeric amount, if the user requested to change the amount.")
             new_description: str | None = Field(None, description="The updated description, if the user requested to change what it was for.")
             new_category_name: str | None = Field(None, description="The distinct new category name, if the user requested to shift/re-categorize it.")
+            new_payment_method: str | None = Field(None, description="One of 'cash', 'card', 'upi', 'bank_transfer', 'other', only if the user asked to change how it was paid.")
+            new_tags: list[str] | None = Field(None, description="The full replacement tag list (lowercase, hyphenated), only if the user asked to add/change/remove tags.")
 
         # Smart model for precise instruction parsing
         llm = get_llm(ModelTask.SMART).with_structured_output(ExpensePatch)
@@ -250,6 +262,8 @@ Rules:
 Current Amount: {expense.amount}
 Current Description: {expense.description}
 Current Category: {curr_cat}
+Current Payment Method: {expense.payment_method or "not set"}
+Current Tags: {", ".join(expense.tags) if expense.tags else "none"}
 
 Available Existing Categories: {cat_str}
 
@@ -257,6 +271,7 @@ RULES:
 1. Return ONLY the fields that should mathematically or categorically change.
 2. If changing the category, match carefully against the available lists. If it is entirely new, return the newly capitalized spelled category.
 3. If an instruction says "shift this 278 expense to food", it means changing the category, NOT the amount or description.
+4. For tags: return the FULL new tag list, not just additions — e.g. adding "work" to existing tags ["goa-trip"] means returning ["goa-trip", "work"].
 """
         try:
             patch: ExpensePatch = await llm.ainvoke([HumanMessage(content=prompt)])
@@ -284,6 +299,16 @@ RULES:
                     cat = await crud.create_category(db, user.id, patch.new_category_name)
                 expense.category_id = cat.id
                 changes.append(f"category to {cat.name}")
+
+        if patch.new_payment_method is not None:
+            method = patch.new_payment_method.lower()
+            if method in _VALID_PAYMENT_METHODS:
+                expense.payment_method = method
+                changes.append(f"payment method to {method}")
+
+        if patch.new_tags is not None:
+            expense.tags = [t.strip().lower() for t in patch.new_tags if t.strip()]
+            changes.append(f"tags to {', '.join(expense.tags) if expense.tags else 'none'}")
 
         if not changes:
             return "No specific modifications were understood from your message. Try being more direct (e.g. 'Make it 500 dollars')."
@@ -355,6 +380,8 @@ Only return the final string."""
             category_id=category.id if category else None,
             source_type=SourceType(pending_data.get("source_type", "text")),
             expense_date=expense_date,
+            payment_method=pending_data.get("payment_method"),
+            tags=pending_data.get("tags") or [],
         )
 
         # Clear the flag

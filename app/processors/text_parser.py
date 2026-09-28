@@ -43,6 +43,7 @@ class Intent(str, Enum):
     STOP_RECURRING = "stop_recurring"
     EXPORT_EXPENSES = "export_expenses"
     RESOLVE_CATEGORY = "resolve_category"
+    RESOLVE_SETTLE = "resolve_settle"
     CLARIFY = "clarify"
     HELP = "help"
     UNKNOWN = "unknown"
@@ -65,6 +66,8 @@ class ParsedMessage:
     extracted_category_name: str | None = None
     edit_instructions: str | None = None
     cadence: str | None = None  # "weekly" | "monthly" | "yearly" — for recurring expenses
+    payment_method: str | None = None  # "cash" | "card" | "upi" | "bank_transfer" | "other"
+    tags: list[str] | None = None
     raw_text: str = ""
 
 

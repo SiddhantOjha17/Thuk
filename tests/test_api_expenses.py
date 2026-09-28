@@ -41,6 +41,59 @@ async def test_create_and_list_expense(client):
     assert body["id"] in ids
 
 
+async def test_create_expense_with_payment_method_and_tags(client):
+    headers = await _register_and_auth(client, email="paymenttags@example.com")
+
+    create = await client.post(
+        "/api/expenses",
+        json={
+            "amount": "300", "description": "Groceries",
+            "payment_method": "upi", "tags": ["goa-trip", "work"],
+        },
+        headers=headers,
+    )
+    assert create.status_code == 201
+    body = create.json()
+    assert body["payment_method"] == "upi"
+    assert body["tags"] == ["goa-trip", "work"]
+
+
+async def test_create_expense_rejects_invalid_payment_method(client):
+    headers = await _register_and_auth(client, email="badpayment@example.com")
+    resp = await client.post(
+        "/api/expenses",
+        json={"amount": "100", "payment_method": "bitcoin"},
+        headers=headers,
+    )
+    assert resp.status_code == 422
+
+
+async def test_expense_without_payment_method_defaults_sensibly(client):
+    headers = await _register_and_auth(client, email="nopayment@example.com")
+    create = await client.post("/api/expenses", json={"amount": "50"}, headers=headers)
+    body = create.json()
+    assert body["payment_method"] is None
+    assert body["tags"] == []
+
+
+async def test_update_expense_payment_method_and_tags(client):
+    headers = await _register_and_auth(client, email="updatepayment@example.com")
+    create = await client.post(
+        "/api/expenses", json={"amount": "100", "description": "test"}, headers=headers
+    )
+    expense_id = create.json()["id"]
+
+    resp = await client.put(
+        f"/api/expenses/{expense_id}",
+        json={"payment_method": "card", "tags": ["reimbursable"]},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["payment_method"] == "card"
+    assert body["tags"] == ["reimbursable"]
+
+
 async def test_list_expenses_filters_by_date_range(client):
     headers = await _register_and_auth(client, email="daterange@example.com")
 
@@ -68,6 +121,25 @@ async def test_list_expenses_filters_by_date_range(client):
     assert "recent one" in descriptions
     assert "old one" not in descriptions
     assert recent.json()["id"] in [e["id"] for e in resp.json()]
+
+
+async def test_search_matches_tags(client):
+    headers = await _register_and_auth(client, email="tagsearch@example.com")
+
+    await client.post(
+        "/api/expenses",
+        json={"amount": "500", "description": "hotel", "tags": ["goa-trip"]},
+        headers=headers,
+    )
+    await client.post(
+        "/api/expenses", json={"amount": "50", "description": "groceries"}, headers=headers
+    )
+
+    resp = await client.get("/api/expenses", params={"q": "goa"}, headers=headers)
+    assert resp.status_code == 200
+    descriptions = [e["description"] for e in resp.json()]
+    assert "hotel" in descriptions
+    assert "groceries" not in descriptions
 
 
 async def test_update_expense(client):

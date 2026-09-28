@@ -66,6 +66,8 @@ async def create_expense(
             expense_date=body.expense_date or date.today(),
             split_count=body.split_count,
             split_people=body.split_people,
+            payment_method=body.payment_method,
+            tags=body.tags,
         )
     else:
         expense = await crud.create_expense(
@@ -77,6 +79,8 @@ async def create_expense(
             category_id=body.category_id,
             source_type=SourceType.TEXT,
             expense_date=body.expense_date or date.today(),
+            payment_method=body.payment_method,
+            tags=body.tags,
         )
     # Reload with category
     result = await db.execute(
@@ -114,6 +118,10 @@ async def update_expense(
         expense.category_id = body.category_id
     if body.expense_date is not None:
         expense.expense_date = body.expense_date
+    if body.payment_method is not None:
+        expense.payment_method = body.payment_method
+    if body.tags is not None:
+        expense.tags = body.tags
 
     await db.flush()
 

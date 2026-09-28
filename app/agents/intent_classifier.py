@@ -53,6 +53,12 @@ class IntentClassificationResult(BaseModel):
     cadence: str | None = Field(
         None, description="For ADD_RECURRING: how often it repeats — one of 'weekly', 'monthly', 'yearly'. Default to 'monthly' if unclear."
     )
+    payment_method: str | None = Field(
+        None, description="For ADD_EXPENSE: how it was paid, ONLY if clearly stated or obvious from a bank/receipt screenshot — one of 'cash', 'card', 'upi', 'bank_transfer', 'other'. Leave null if not mentioned; do not guess."
+    )
+    tags: list[str] | None = Field(
+        None, description="For ADD_EXPENSE: short freeform labels the user explicitly gives (e.g. 'tag it work', 'goa trip'), lowercase with hyphens (e.g. 'goa-trip'). Leave null if none mentioned; do not invent tags."
+    )
     clarification_question: str | None = Field(
         None, description="If the intent strongly requires CLARIFY, what exact question should we ask the user?"
     )
@@ -112,7 +118,7 @@ ROUTING RULES:
 - "how much", "show", "what did I spend", "summary" (as question) → QUERY_EXPENSES
 - "change", "edit", "update", "actually make it", "correct" referring to a past expense → EDIT_EXPENSE
 - "who owes", "debts", "owes me" → CHECK_DEBTS
-- "[name] paid me back", "settled", "received from" → SETTLE_DEBT
+- "[name] paid me back", "settled", "received from" → SETTLE_DEBT (extract person_name; if a specific amount is mentioned, e.g. "Rahul paid me back 200", extract it into `amount` — leave amount null for a full settlement)
 - "add category [name]" → ADD_CATEGORY
 - "delete", "remove", "undo" → DELETE_EXPENSE
 - "set budget [amount]" → SET_BUDGET
@@ -138,6 +144,14 @@ FOR AMOUNTS:
 - Parse written numbers: "five hundred" → 500, "two thousand" → 2000
 - k-suffix already handled: use the PRE-EXTRACTED HINT if present
 - Default currency: INR
+
+FOR PAYMENT METHOD (ADD_EXPENSE only):
+- Only extract if clearly stated or obvious from context — e.g. a bank SMS screenshot mentioning "UPI" or "Credit Card" is obvious; "500 food" alone is not.
+- Never guess. Leave null when not mentioned.
+
+FOR TAGS (ADD_EXPENSE only):
+- Only extract when the user explicitly gives a label, e.g. "tag it work", "500 lunch #goa-trip", "this was for the goa trip".
+- Never invent tags from the description alone (e.g. "500 food" does NOT imply tags=["food"]).
 
 SUPPORTED INTENTS: ADD_EXPENSE, QUERY_EXPENSES, EDIT_EXPENSE, SPLIT_PAYMENT, CHECK_DEBTS,
 SETTLE_DEBT, ADD_CATEGORY, LIST_CATEGORIES, DELETE_EXPENSE, SET_BUDGET, CHECK_BUDGET,
@@ -177,6 +191,8 @@ EXPORT_EXPENSES, RESOLVE_CATEGORY, HELP, CLARIFY, UNKNOWN"""
                 extracted_category_name=result.extracted_category_name,
                 edit_instructions=result.edit_instructions,
                 cadence=result.cadence,
+                payment_method=result.payment_method,
+                tags=result.tags,
                 raw_text=result.clarification_question if result.intent == Intent.CLARIFY else text,
             )
         except Exception as e:

@@ -5,7 +5,7 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import String, and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -153,6 +153,8 @@ async def create_expense(
     source_type: SourceType = SourceType.TEXT,
     expense_date: date | None = None,
     metadata: dict | None = None,
+    payment_method: str | None = None,
+    tags: list[str] | None = None,
 ) -> Expense:
     """Create a new expense."""
     expense = Expense(
@@ -164,6 +166,8 @@ async def create_expense(
         source_type=source_type.value,
         expense_date=expense_date or date.today(),
         metadata_=metadata or {},
+        payment_method=payment_method,
+        tags=tags or [],
     )
     db.add(expense)
     await db.flush()
@@ -200,7 +204,9 @@ async def get_user_expenses(
     if search:
         like = f"%{search}%"
         query = query.where(
-            Expense.description.ilike(like) | Category.name.ilike(like)
+            Expense.description.ilike(like)
+            | Category.name.ilike(like)
+            | Expense.tags.cast(String).ilike(like)
         )
 
     query = (
@@ -302,6 +308,8 @@ async def create_split_expense(
     expense_date: date | None,
     split_count: int | None,
     split_people: list[str] | None,
+    payment_method: str | None = None,
+    tags: list[str] | None = None,
 ) -> Expense:
     """Create an expense split across multiple people, plus debt records for named participants.
 
@@ -326,6 +334,8 @@ async def create_split_expense(
             "original_amount": str(amount),
             "split_count": count,
         },
+        payment_method=payment_method,
+        tags=tags,
     )
 
     await create_split(
@@ -482,6 +492,50 @@ async def settle_debts_by_person(
         count += 1
     await db.flush()
     return count
+
+
+async def get_unsettled_debts_by_person(
+    db: AsyncSession, user_id: uuid.UUID, person_name: str
+) -> list[Debt]:
+    """List a person's individual unsettled debt rows, oldest first."""
+    result = await db.execute(
+        select(Debt)
+        .options(selectinload(Debt.related_expense))
+        .where(
+            and_(
+                Debt.user_id == user_id,
+                func.lower(Debt.person_name) == person_name.lower(),
+                Debt.is_settled == False,  # noqa: E712
+            )
+        )
+        .order_by(Debt.created_at)
+    )
+    return list(result.scalars().all())
+
+
+async def get_debt_by_id(db: AsyncSession, user_id: uuid.UUID, debt_id: uuid.UUID) -> Debt | None:
+    """Fetch a single debt, scoped to its owner."""
+    result = await db.execute(
+        select(Debt)
+        .options(selectinload(Debt.related_expense))
+        .where(Debt.id == debt_id, Debt.user_id == user_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def apply_partial_payment(db: AsyncSession, debt: Debt, amount: Decimal) -> Debt:
+    """Reduce a debt by `amount`, settling it if that brings it to zero or below.
+
+    `amount` is clamped to the debt's remaining balance — paying back more than
+    what's owed just fully settles it rather than going negative.
+    """
+    if amount >= debt.amount:
+        debt.amount = Decimal("0")
+        debt.is_settled = True
+    else:
+        debt.amount -= amount
+    await db.flush()
+    return debt
 
 
 # ============== Recurring Expense Operations ==============

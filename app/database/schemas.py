@@ -3,9 +3,11 @@
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, PlainSerializer
+
+PaymentMethod = Literal["cash", "card", "upi", "bank_transfer", "other"]
 
 # Decimal fields serialized as JSON numbers (not strings) so iOS/JS can decode them
 DecimalNumber = Annotated[
@@ -76,6 +78,8 @@ class ExpenseCreate(BaseModel):
     description: str | None = None
     category_id: uuid.UUID | None = None
     expense_date: date | None = None
+    payment_method: PaymentMethod | None = None
+    tags: list[str] | None = None
     # Split (optional): `amount` above is the total paid, not the user's share.
     split_count: int | None = Field(default=None, ge=2)
     split_people: list[str] | None = None
@@ -87,6 +91,8 @@ class ExpenseUpdate(BaseModel):
     description: str | None = None
     category_id: uuid.UUID | None = None
     expense_date: date | None = None
+    payment_method: PaymentMethod | None = None
+    tags: list[str] | None = None
 
 
 class ExpenseResponse(BaseModel):
@@ -98,6 +104,8 @@ class ExpenseResponse(BaseModel):
     description: str | None
     category_id: uuid.UUID | None
     source_type: str
+    payment_method: str | None
+    tags: list[str]
     expense_date: date
     created_at: datetime
     category: CategoryResponse | None = None
@@ -162,6 +170,25 @@ class DebtSummaryResponse(BaseModel):
     total_owed_to_me: DecimalNumber
     total_i_owe: DecimalNumber
     debts: list[DebtResponse]
+
+
+class DebtItemResponse(BaseModel):
+    """A single, non-aggregated debt row — used to pick one for a partial payment."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    person_name: str
+    amount: DecimalNumber
+    currency: str
+    direction: str
+    is_settled: bool
+    created_at: datetime
+    description: str | None = None  # from the linked expense, if any
+
+
+class DebtPayment(BaseModel):
+    amount: Decimal = Field(gt=0)
 
 
 # ── Analytics ─────────────────────────────────────────────────────────────────

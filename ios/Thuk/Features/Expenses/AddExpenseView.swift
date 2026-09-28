@@ -10,6 +10,8 @@ struct AddExpenseView: View {
     @State private var description: String = ""
     @State private var selectedCategoryId: UUID? = nil
     @State private var expenseDate: Date = .now
+    @State private var paymentMethod: PaymentMethod? = nil
+    @State private var tagsString: String = ""
     @State private var categories: [CategoryResponse] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -20,6 +22,13 @@ struct AddExpenseView: View {
 
     private var amountDecimal: Decimal? {
         amountString.isEmpty ? nil : Decimal(string: amountString)
+    }
+
+    private var tagsArray: [String] {
+        tagsString
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+            .filter { !$0.isEmpty }
     }
 
     private var splitParticipants: [String] {
@@ -86,6 +95,8 @@ struct AddExpenseView: View {
                 description  = exp.description ?? ""
                 selectedCategoryId = exp.categoryId
                 expenseDate  = exp.expenseDate
+                paymentMethod = exp.paymentMethod
+                tagsString = exp.tags.joined(separator: ", ")
             }
         }
     }
@@ -149,6 +160,32 @@ struct AddExpenseView: View {
                 Text(expenseDate.shortDisplay)
                     .font(.system(size: 15))
                     .foregroundStyle(Color.thukSecondary)
+            }
+            .padding(16)
+            .background(Color.thukSurface)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            // Payment method
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    paymentMethodChip(nil, name: "Not set")
+                    ForEach(PaymentMethod.allCases) { method in
+                        paymentMethodChip(method, name: method.displayName)
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+
+            // Tags
+            HStack(spacing: 12) {
+                Image(systemName: "tag")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Color.thukSecondary)
+                    .frame(width: 20)
+                TextField("Tags, comma separated (optional)", text: $tagsString)
+                    .font(.system(size: 16))
+                    .foregroundStyle(.white)
+                    .autocorrectionDisabled()
             }
             .padding(16)
             .background(Color.thukSurface)
@@ -224,6 +261,22 @@ struct AddExpenseView: View {
         }
     }
 
+    private func paymentMethodChip(_ method: PaymentMethod?, name: String) -> some View {
+        let selected = paymentMethod == method
+        return Button {
+            paymentMethod = selected ? nil : method
+        } label: {
+            Text(name)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(selected ? .white : Color.thukSecondary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(selected ? Color.thukAccent : Color.thukSurface)
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
     private func categoryChip(_ id: UUID?, name: String, hexColor: String? = nil) -> some View {
         let selected = selectedCategoryId == id
         return Button {
@@ -258,13 +311,13 @@ struct AddExpenseView: View {
         Task {
             let success: Bool
             if let editing = editingExpense, let vm = viewModel {
-                success = await vm.update(editing, amount: amount, description: description.isEmpty ? nil : description, categoryId: selectedCategoryId, date: expenseDate)
+                success = await vm.update(editing, amount: amount, description: description.isEmpty ? nil : description, categoryId: selectedCategoryId, date: expenseDate, paymentMethod: paymentMethod, tags: tagsArray)
             } else if let vm = viewModel {
-                success = await vm.add(amount: amount, currency: "INR", description: description.isEmpty ? nil : description, categoryId: selectedCategoryId, date: expenseDate, splitPeople: people)
+                success = await vm.add(amount: amount, currency: "INR", description: description.isEmpty ? nil : description, categoryId: selectedCategoryId, date: expenseDate, paymentMethod: paymentMethod, tags: tagsArray, splitPeople: people)
             } else {
                 // Standalone (from HomeView)
                 do {
-                    let body = ExpenseCreate(amount: amount, currency: "INR", description: description.isEmpty ? nil : description, categoryId: selectedCategoryId, expenseDate: expenseDate.isoDate, splitPeople: people)
+                    let body = ExpenseCreate(amount: amount, currency: "INR", description: description.isEmpty ? nil : description, categoryId: selectedCategoryId, expenseDate: expenseDate.isoDate, paymentMethod: paymentMethod, tags: tagsArray.isEmpty ? nil : tagsArray, splitPeople: people)
                     let _: ExpenseResponse = try await api.request("/api/expenses", method: "POST", body: body)
                     success = true
                 } catch {

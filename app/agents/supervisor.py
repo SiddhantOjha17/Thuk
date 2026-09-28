@@ -102,6 +102,11 @@ class SupervisorAgent:
             state["parsed"] = ParsedMessage(intent=Intent.DELETE_EXPENSE, raw_text=msg)
             return state
 
+        # 2b. Intercept pending partial-payment debt selection — user is picking which debt
+        if await store.get_flag(str(self.user.id), "pending_settle"):
+            state["parsed"] = ParsedMessage(intent=Intent.RESOLVE_SETTLE, raw_text=msg)
+            return state
+
         # 3. Instant fast-path for unambiguous commands — no LLM call
         instant = get_instant_intent(msg)
         if instant is not None:
@@ -132,6 +137,7 @@ class SupervisorAgent:
             Intent.ADD_CATEGORY: "category_add",
             Intent.LIST_CATEGORIES: "category_list",
             Intent.RESOLVE_CATEGORY: "expense_resolve",
+            Intent.RESOLVE_SETTLE: "settle_resolve",
             Intent.SET_BUDGET: "budget_set",
             Intent.CHECK_BUDGET: "budget_check",
             Intent.ADD_RECURRING: "recurring_add",
@@ -307,9 +313,20 @@ class SupervisorAgent:
                 db=state["db"],
                 user=state["user"],
                 person_name=state["parsed"].person_name,
+                amount=state["parsed"].amount,
             )
         else:
             response = "Please specify who paid you back (e.g., 'Rahul paid me back')."
+        state["response"] = response
+        return state
+
+    async def handle_settle_resolve(self, state: AgentState) -> AgentState:
+        """Handle picking which debt a pending partial payment applies to."""
+        response = await self.split_agent.resolve_pending_settle(
+            db=state["db"],
+            user=state["user"],
+            reply_text=state["user_message"],
+        )
         state["response"] = response
         return state
 
@@ -393,6 +410,7 @@ class SupervisorAgent:
         workflow.add_node("split", self.handle_split)
         workflow.add_node("debts", self.handle_debts)
         workflow.add_node("settle", self.handle_settle)
+        workflow.add_node("settle_resolve", self.handle_settle_resolve)
         workflow.add_node("category_add", self.handle_category_add)
         workflow.add_node("category_list", self.handle_category_list)
         workflow.add_node("help", self.handle_help)
@@ -421,6 +439,7 @@ class SupervisorAgent:
                 "split": "split",
                 "debts": "debts",
                 "settle": "settle",
+                "settle_resolve": "settle_resolve",
                 "category_add": "category_add",
                 "category_list": "category_list",
                 "help": "help",
@@ -431,7 +450,7 @@ class SupervisorAgent:
 
         # All agents end after processing
         for node in ["expense", "expense_delete", "expense_edit", "expense_resolve", "budget_set", "budget_check", "export",
-                     "query", "split", "debts", "settle", "category_add",
+                     "query", "split", "debts", "settle", "settle_resolve", "category_add",
                      "category_list", "help", "clarify", "llm_fallback",
                      "recurring_add", "recurring_list", "recurring_stop"]:
             workflow.add_edge(node, END)

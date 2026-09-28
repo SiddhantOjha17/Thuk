@@ -35,6 +35,25 @@ struct CategoryResponse: Codable, Identifiable, Hashable {
 
 // MARK: - Expenses
 
+/// Matches the backend's fixed payment method set (app/database/schemas.py PaymentMethod).
+enum PaymentMethod: String, Codable, CaseIterable, Identifiable {
+    case cash, card, upi
+    case bankTransfer = "bank_transfer"
+    case other
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .cash: "Cash"
+        case .card: "Card"
+        case .upi: "UPI"
+        case .bankTransfer: "Bank transfer"
+        case .other: "Other"
+        }
+    }
+}
+
 struct ExpenseResponse: Codable, Identifiable {
     let id: UUID
     let amount: Decimal
@@ -42,6 +61,8 @@ struct ExpenseResponse: Codable, Identifiable {
     let description: String?
     let categoryId: UUID?
     let sourceType: String
+    let paymentMethod: PaymentMethod?
+    let tags: [String]
     let expenseDate: Date
     let createdAt: Date
     var category: CategoryResponse?
@@ -53,6 +74,8 @@ struct ExpenseCreate: Encodable {
     let description: String?
     let categoryId: UUID?
     let expenseDate: String  // ISO8601 date string "YYYY-MM-DD"
+    var paymentMethod: PaymentMethod? = nil
+    var tags: [String]? = nil
     var splitCount: Int? = nil
     var splitPeople: [String]? = nil
 }
@@ -63,6 +86,8 @@ struct ExpenseUpdate: Encodable {
     var description: String?
     var categoryId: UUID?
     var expenseDate: String?
+    var paymentMethod: PaymentMethod?
+    var tags: [String]?
 }
 
 // MARK: - Budget

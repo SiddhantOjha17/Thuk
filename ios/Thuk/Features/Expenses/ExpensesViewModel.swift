@@ -92,12 +92,13 @@ final class ExpensesViewModel {
         }
     }
 
-    func add(amount: Decimal, currency: String, description: String?, categoryId: UUID?, date: Date, splitPeople: [String]? = nil) async -> Bool {
+    func add(amount: Decimal, currency: String, description: String?, categoryId: UUID?, date: Date, paymentMethod: PaymentMethod? = nil, tags: [String] = [], splitPeople: [String]? = nil) async -> Bool {
         do {
             let body = ExpenseCreate(
                 amount: amount, currency: currency,
                 description: description?.isEmpty == true ? nil : description,
                 categoryId: categoryId, expenseDate: date.isoDate,
+                paymentMethod: paymentMethod, tags: tags.isEmpty ? nil : tags,
                 splitPeople: (splitPeople?.isEmpty == false) ? splitPeople : nil
             )
             let created: ExpenseResponse = try await api.request("/api/expenses", method: "POST", body: body)
@@ -109,13 +110,15 @@ final class ExpensesViewModel {
         }
     }
 
-    func update(_ expense: ExpenseResponse, amount: Decimal, description: String?, categoryId: UUID?, date: Date) async -> Bool {
+    func update(_ expense: ExpenseResponse, amount: Decimal, description: String?, categoryId: UUID?, date: Date, paymentMethod: PaymentMethod? = nil, tags: [String] = []) async -> Bool {
         do {
             let body = ExpenseUpdate(
                 amount: amount,
                 description: description,
                 categoryId: categoryId,
-                expenseDate: date.isoDate
+                expenseDate: date.isoDate,
+                paymentMethod: paymentMethod,
+                tags: tags
             )
             let updated: ExpenseResponse = try await api.request("/api/expenses/\(expense.id)", method: "PUT", body: body)
             if let idx = expenses.firstIndex(where: { $0.id == expense.id }) {

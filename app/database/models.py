@@ -182,6 +182,15 @@ class Expense(Base):
         String(10),
         default=SourceType.TEXT.value,
     )
+    payment_method: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+    )
+    tags: Mapped[list[str]] = mapped_column(
+        JSONB,
+        default=list,
+        server_default="[]",
+    )
     expense_date: Mapped[date] = mapped_column(
         Date,
         default=lambda: datetime.now(UTC).date(),
